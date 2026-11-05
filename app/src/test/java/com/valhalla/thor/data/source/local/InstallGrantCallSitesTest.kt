@@ -212,17 +212,19 @@ class InstallGrantCallSitesTest {
     @Test
     fun `a new package clears the previous package's answer`() {
         val source = stripComments(sourceOf(VIEW_MODEL))
-        val parse = source.substringAfter("fun parsePackage(").substringBefore("\n    private")
+        assertTrue("ordinary picks must use the common input reset", source.contains("parseInput(uri, allowKernel = false)"))
+        assertTrue("shared documents must use the common input reset", source.contains("parseInput(uri, allowKernel = true)"))
+        val parse = source.substringAfter("private fun parseInput(").substringBefore("\n    private")
 
         // The slice, before it is trusted. `substringBefore` returns everything when its delimiter
         // is gone, so a rename downstream would silently widen this to the rest of the file and the
         // assertions below would start passing on a reset made somewhere else entirely.
         assertTrue(
-            "the parsePackage slice missed its own body — the extraction is reading the wrong span",
+            "the parseInput slice missed its own body — the extraction is reading the wrong span",
             parse.contains("analysisJob")
         )
         assertFalse(
-            "the parsePackage slice ran past the end of the function, so this test no longer says " +
+            "the parseInput slice ran past the end of the function, so this test no longer says " +
                 "where the reset happens",
             parse.contains("fun startInstallation")
         )

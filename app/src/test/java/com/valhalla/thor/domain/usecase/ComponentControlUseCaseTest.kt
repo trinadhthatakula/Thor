@@ -565,7 +565,7 @@ private class FakeSystem(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext
-    ): Result<Unit> =
+    ): Result<com.valhalla.thor.domain.model.SuspensionChange> =
         unreachable("setAppSuspended")
 
     override suspend fun forceStopApp(

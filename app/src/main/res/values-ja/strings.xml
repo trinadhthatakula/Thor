@@ -34,7 +34,7 @@
     <string name="dynamic_colors">ダイナミックカラー</string>
     <string name="dynamic_colors_desc">マテリアルユー統合</string>
     <string name="biometric_lock">生体認証ロック</string>
-    <string name="biometric_lock_desc">起動時に認証を要求します。有効にすると、Thor のスクリーンショットと画面記録がブロックされ、[最近] プレビューが非表示になります。</string>
+    <string name="biometric_lock_desc">メインアプリの起動時に認証を要求し、スクリーンショットと画面録画を禁止して、最近使ったアプリのプレビューを非表示にします。</string>
     <string name="biometric_not_available">生体認証が登録されていないか、利用できません</string>
     <string name="active_engine">アクティブエンジン</string>
     <string name="active_engine_desc">利用可能なプロバイダーを切り替える</string>
@@ -265,10 +265,15 @@
     <plurals name="tile_subtitle_format">
         <item quantity="other">%1$d件のアプリ · タップして凍結</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="other">%1$d件のアプリ · タップして凍結解除</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">先にRoot、Shizuku、またはDhizukuへのアクセスを許可してください。</string>
     <string name="tile_no_apps_toast">フリーザーにアプリがありません</string>
     <string name="tile_checking">確認中…</string>
     <string name="tile_freezing">凍結中…</string>
+    <string name="tile_unfreezing">凍結解除中…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
     <string name="freezer_settings">フリーザーの設定</string>
     <string name="unfreeze_all">フリーザーアプリの凍結を解除する</string>
     <string name="unfreeze_all_apps">フリーザー内のすべてのアプリの凍結を解除</string>
@@ -279,8 +284,10 @@
     <string name="auto_freeze_desc">画面がロックされているときにアプリを自動的に凍結する</string>
     <string name="skip_routine_freeze_confirmation">日常的な凍結を確認しない</string>
     <string name="skip_routine_freeze_confirmation_desc">削除リストにフラグが立てられていない限り、最初に確認することなくシステム アプリを凍結します。 Expert とマークされたアプリは引き続き警告し、安全でないアプリは引き続き拒否されます。</string>
-    <string name="add_freezer_to_launcher">フリーザーをランチャーに追加</string>
-    <string name="add_freezer_to_launcher_desc">凍結したアプリをホーム画面のショートカットとして表示し、タップして起動できる</string>
+
+    <string name="disable_shortcuts">ショートカットを無効にする</string>
+    <string name="disable_shortcuts_desc">ホーム画面に固定したものを含め、フリーザーのショートカットを無効にします</string>
+    <string name="shortcuts_disabled_message">Thor でショートカットが無効になっています</string>
     <string name="add_to_home_screen">ホーム画面に追加</string>
     <string name="freeze_all_apps">フリーザー内のすべてのアプリを凍結</string>
     <string name="shortcuts">ショートカット</string>
@@ -366,7 +373,6 @@
     <string name="data_cleared_success">%1$sのデータをクリアしました</string>
     <string name="suspended_success">%1$s を一時停止しました</string>
     <string name="unsuspended_success">%1$s の一時停止を解除しました</string>
-    <string name="suspend_owned_by_other_privilege">ここから %1$s の一時停止を解除できません。これは %2$s によって一時停止されており、Android では同じ権限でのみ解除できます。 Thor をその特権モードに戻して、再試行してください。</string>
     <string name="freeze_system_app_requires_root">ここでは%1$sを凍結できません。この端末ではThorによる無効化が許可されず、Androidではroot権限がある場合にのみ、プリインストールアプリを1人のユーザーから削除できます。アプリは変更されていません。凍結するにはThorのRootモードが必要です。</string>
     <string name="freeze_system_app_removal_failed">%1$s を凍結できません。この端末ではThorによる無効化が許可されず、現在のユーザー向けのアンインストールにも失敗しました。Android の報告: %2$s</string>
     <string name="freeze_system_app_disable_refused">%1$s を凍結できません。このデバイスは無効化を拒否したため、Thor はアプリをそのまま残しました。代わりにアプリを削除すると、アプリが管理しているアカウントからサインアウトする可能性があります。</string>

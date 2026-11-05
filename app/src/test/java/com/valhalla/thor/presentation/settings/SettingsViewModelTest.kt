@@ -54,6 +54,30 @@ class SettingsViewModelTest {
     val mainDispatcherRule = MainDispatcherRule(StandardTestDispatcher())
 
     @Test
+    fun `disable switch stops shortcuts and re-enables them when turned off`() = runTest {
+        val preferences = FakePreferenceRepository()
+        val shortcuts = FakeAppShortcutController()
+        val vm = viewModel(
+            freezer = FakeFreezerRepository(),
+            preferences = preferences,
+            controller = FakePrivilegeSweepController(),
+            candidates = emptyMap(),
+            targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+            shortcuts = shortcuts,
+        )
+
+        vm.setDisableShortcuts(true)
+        runCurrent()
+        assertTrue(preferences.userPreferences.first().disableShortcuts)
+        assertEquals(listOf(false), shortcuts.shortcutSyncs)
+
+        vm.setDisableShortcuts(false)
+        runCurrent()
+        assertFalse(preferences.userPreferences.first().disableShortcuts)
+        assertEquals(listOf(false, true), shortcuts.shortcutSyncs)
+    }
+
+    @Test
     fun `settings render preferences before readiness and follow shared privilege changes`() = runTest {
         val initial = UserPreferences(themeMode = ThemeMode.DARK, preferredPrivilegeMode = PrivilegeMode.ROOT)
         val privileges = FakePrivilegeStateProvider()
@@ -349,6 +373,7 @@ class SettingsViewModelTest {
         targets: TaskNavigationTargets,
         profiles: FakeFreezeProfileRepository = FakeFreezeProfileRepository(),
         privileges: FakePrivilegeStateProvider = FakePrivilegeStateProvider(),
+        shortcuts: FakeAppShortcutController = FakeAppShortcutController(),
     ): SettingsViewModel = SettingsViewModel(
         preferenceRepository = preferences,
         privilegeState = privileges,
@@ -363,7 +388,7 @@ class SettingsViewModelTest {
         ),
         sweepController = controller,
         taskNavigationTargets = targets,
-        appShortcuts = FakeAppShortcutController(),
+        appShortcuts = shortcuts,
         anyFileOpenerController = object : AnyFileOpenerController {
             override suspend fun isEnabled(): Boolean = false
             override suspend fun setEnabled(enabled: Boolean) = Unit

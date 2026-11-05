@@ -8,7 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.freezer.DefaultPrivilegeSweepController
 import com.valhalla.thor.data.freezer.PrivilegeQueueWakeSignal

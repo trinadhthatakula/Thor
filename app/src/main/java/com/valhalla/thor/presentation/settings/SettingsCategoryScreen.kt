@@ -123,6 +123,26 @@ fun SettingsCategoryScreen(
     var showRemovalFallbackConfirmation by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
     var showPassphrase by remember { mutableStateOf(false) }
+    var showInstallerLockChoice by rememberSaveable { mutableStateOf(false) }
+    if (showInstallerLockChoice) {
+        AlertDialog(
+            onDismissRequest = { showInstallerLockChoice = false },
+            title = { Text(stringResource(R.string.installer_lock_prompt_title)) },
+            text = { Text(stringResource(R.string.installer_lock_prompt_desc)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showInstallerLockChoice = false
+                    viewModel.setBiometricLock(true, extendToInstaller = true)
+                }) { Text(stringResource(R.string.installer_lock_include)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showInstallerLockChoice = false
+                    viewModel.setBiometricLock(true, extendToInstaller = false)
+                }) { Text(stringResource(R.string.installer_lock_main_only)) }
+            },
+        )
+    }
 
     // The any-file switch is backed by PackageManager, not DataStore, so nothing pushes a change at
     // us: `pm enable`, a ROM app manager, or a wipe of Thor's component state all move it silently.
@@ -470,17 +490,13 @@ fun SettingsCategoryScreen(
                         onCheckedChange = { viewModel.setSkipRoutineFreezeConfirmation(it) }
                     )
 
-                    SettingsRowId.ADD_FREEZER_TO_LAUNCHER -> SettingsExpandedSwitchRow(
+                    SettingsRowId.DISABLE_SHORTCUTS -> SettingsExpandedSwitchRow(
                         icon = R.drawable.frozen,
-                        title = stringResource(R.string.add_freezer_to_launcher),
-                        subtitle = privilegeAwareSubtitle(
-                            hasPrivilege,
-                            R.string.add_freezer_to_launcher_desc
-                        ),
-                        checked = prefs.addFreezerToLauncher,
-                        enabled = hasPrivilege,
+                        title = stringResource(R.string.disable_shortcuts),
+                        subtitle = stringResource(R.string.disable_shortcuts_desc),
+                        checked = prefs.disableShortcuts,
                         highlighted = lit,
-                        onCheckedChange = { viewModel.setAddFreezerToLauncher(it) }
+                        onCheckedChange = { viewModel.setDisableShortcuts(it) }
                     )
 
                     // The one row in Settings that *does* something the moment you confirm it, and
@@ -571,7 +587,20 @@ fun SettingsCategoryScreen(
                         },
                         checked = prefs.biometricLockEnabled,
                         highlighted = lit,
-                        onCheckedChange = { viewModel.setBiometricLock(it) }
+                        onCheckedChange = {
+                            if (it && viewModel.canUseBiometric) showInstallerLockChoice = true
+                            else viewModel.setBiometricLock(it)
+                        }
+                    )
+
+                    SettingsRowId.INSTALLER_APP_LOCK -> SettingsExpandedSwitchRow(
+                        icon = R.drawable.apk_install,
+                        title = stringResource(R.string.installer_app_lock),
+                        subtitle = stringResource(R.string.installer_app_lock_desc),
+                        checked = prefs.installerAppLockEnabled,
+                        enabled = prefs.biometricLockEnabled,
+                        highlighted = lit,
+                        onCheckedChange = viewModel::setInstallerAppLock,
                     )
 
                     SettingsRowId.USAGE_ACCESS -> SettingsSwitchRow(

@@ -3,6 +3,10 @@
 
 package com.valhalla.thor.data.freezer
 
+import com.valhalla.thor.data.source.local.UadHelper
+import com.valhalla.thor.domain.model.FreezeCandidate
+import com.valhalla.thor.domain.model.SuspensionFailureReason
+import com.valhalla.thor.domain.model.SuspensionPolicyException
 import com.valhalla.thor.domain.model.SystemAppFreezeFailure
 import com.valhalla.thor.domain.model.SystemAppFreezeFailureReason
 import com.valhalla.thor.util.Logger
@@ -28,20 +32,25 @@ internal fun interface PrivilegeSweepPackageStateReader {
 
     /** Null means unavailable, never an assertion that an app is not suspended. */
     fun isSuspended(packageName: String): Boolean? = null
+    fun candidateForFreeze(packageName: String): FreezeCandidate =
+        FreezeCandidate(stateOf(packageName))
 }
 
 @Single(binds = [PrivilegeSweepPackageStateReader::class])
 internal class DefaultPrivilegeSweepPackageStateReader(
     private val reader: AppFreezeStateReader,
+    private val uadHelper: UadHelper,
 ) : PrivilegeSweepPackageStateReader {
     override fun stateOf(packageName: String): FreezeState = reader.stateOf(packageName)
     override fun isSuspended(packageName: String): Boolean? = reader.isSuspended(packageName)
+    override fun candidateForFreeze(packageName: String) = reader.candidateOf(packageName, uadHelper.snapshot())
 }
 
 internal data class PrivilegeSweepItemExecutionResult(
     val outcome: SweepAttemptOutcome,
     val rootLaneDegraded: Boolean,
     val failureReason: SystemAppFreezeFailureReason? = null,
+    val externalSuspensionRemains: Boolean = false,
 )
 
 internal fun interface PrivilegeSweepItemExecutor {
@@ -71,8 +80,18 @@ internal class DefaultPrivilegeSweepItemExecutor(
             commandTimeout = PrivilegeExecutionTimeouts.SWEEP_COMMAND,
         )
         var failureReason: SystemAppFreezeFailureReason? = null
+        var externalSuspensionRemains = false
         fun recordFailure(failure: Throwable) {
-            failureReason = (failure as? SystemAppFreezeFailure)?.reason
+            failureReason = when (failure) {
+                is SystemAppFreezeFailure -> failure.reason
+                is SuspensionPolicyException -> when (failure.reason) {
+                    SuspensionFailureReason.OWNERSHIP_UNKNOWN -> SystemAppFreezeFailureReason.SUSPENSION_OWNERSHIP_UNKNOWN
+                    SuspensionFailureReason.CANNOT_KEEP_INDEPENDENT -> SystemAppFreezeFailureReason.SUSPEND_INDEPENDENT_UNAVAILABLE
+                    SuspensionFailureReason.WRONG_PRIVILEGE -> SystemAppFreezeFailureReason.SUSPEND_WRONG_PRIVILEGE
+                    SuspensionFailureReason.NOT_VERIFIED -> SystemAppFreezeFailureReason.SUSPENSION_NOT_VERIFIED
+                }
+                else -> null
+            }
             Logger.e("PrivilegeSweepItemExecutor",
                 "${snapshot.operation} failed for $packageName", failure)
         }
@@ -83,22 +102,16 @@ internal class DefaultPrivilegeSweepItemExecutor(
                     owner = snapshot.operation.owner(),
                     execution = execution,
                 ) {
-                    val state = stateReader.stateOf(packageName)
+                    val freezeCandidate = if (snapshot.operation == PrivilegeSweepOperation.FREEZE)
+                        stateReader.candidateForFreeze(packageName) else null
+                    val state = freezeCandidate?.state ?: stateReader.stateOf(packageName)
                     val result = when (snapshot.operation) {
-                        PrivilegeSweepOperation.FREEZE -> when (state) {
-                            FreezeState.FROZEN -> SweepAttemptOutcome.SUCCEEDED
-                            FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
-                            FreezeState.ACTIVE -> when (snapshot.freezerMode) {
-                                FreezerMode.FREEZE -> manageApp
-                                    .setAppDisabledUncoordinated(packageName, true, execution)
-                                    .toAttemptOutcome(::recordFailure)
-
-                                FreezerMode.SUSPEND -> manageApp
-                                    .setAppSuspendedUncoordinated(packageName, true, execution)
-                                    .toAttemptOutcome(::recordFailure)
-
-                                null -> SweepAttemptOutcome.FAILED
-                            }
+                        PrivilegeSweepOperation.FREEZE -> when {
+                            state == FreezeState.ABSENT || snapshot.freezerMode == null ||
+                                freezeCandidate?.blockedFromFreeze == true -> SweepAttemptOutcome.FAILED
+                            else -> manageApp.freezeForFreezerUncoordinated(
+                                packageName, snapshot.freezerMode, execution,
+                            ).toAttemptOutcome(::recordFailure)
                         }
 
                         PrivilegeSweepOperation.UNFREEZE -> when (state) {
@@ -106,6 +119,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
                             FreezeState.ABSENT -> SweepAttemptOutcome.FAILED
                             FreezeState.FROZEN -> manageApp
                                 .forceUnfreezeUncoordinated(packageName, execution)
+                                .onSuccess { externalSuspensionRemains = it.suspensionRemains }
                                 .toAttemptOutcome(::recordFailure)
                         }
 
@@ -115,9 +129,9 @@ internal class DefaultPrivilegeSweepItemExecutor(
                             val desired = snapshot.operation == PrivilegeSweepOperation.SUSPEND
                             when {
                                 suspended == null -> SweepAttemptOutcome.FAILED
-                                suspended == desired -> SweepAttemptOutcome.SUCCEEDED
                                 else -> manageApp
                                     .setAppSuspendedUncoordinated(packageName, desired, execution)
+                                    .onSuccess { externalSuspensionRemains = !desired && it.suspensionRemains }
                                     .toAttemptOutcome(::recordFailure)
                             }
                         }
@@ -157,6 +171,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
             outcome = outcome,
             rootLaneDegraded = execution.provenance.usedDegradedRootFallback,
             failureReason = failureReason,
+            externalSuspensionRemains = externalSuspensionRemains,
         )
     }
 

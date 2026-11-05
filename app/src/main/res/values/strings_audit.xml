@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">Choose folder</string>
+    <string name="backup_hub_custom_folder">Custom folder</string>
+    <string name="backup_hub_delete_access">Storage access was denied. Restore access to the folder, then retry.</string>
+    <string name="backup_hub_delete_failed">Could not delete %1$s.</string>
+    <string name="backup_hub_delete_missing">The archive could not be found. Refresh the list.</string>
+    <string name="backup_hub_delete_read_only">This location is read-only.</string>
+    <string name="backup_hub_delete_unavailable">The storage provider did not complete the deletion. Check the location and retry.</string>
+    <string name="backup_hub_empty_saved_desc">Create a backup or export an app to see it here.</string>
+    <string name="backup_hub_empty_saved_title">No saved archives</string>
+    <string name="backup_hub_folder_failed">Could not save access to this folder. Choose the folder again.</string>
+    <string name="backup_hub_folder_hint">This selects the folder used for exports and saved archives.</string>
+    <string name="backup_hub_newest">Newest first</string>
+    <string name="backup_hub_no_matches">No archives match your search or filter.</string>
+    <string name="backup_hub_saved_archives">Saved archives</string>
+    <string name="backup_hub_scan_failed">Could not refresh saved archives. Try again.</string>
+    <string name="backup_hub_search_archives">Search saved archives</string>
+    <string name="backup_hub_source_unavailable">Could not fully read %1$s. Some archives may be missing from this list.</string>
+    <string name="installer_app_lock">Extend app lock to installer</string>
+    <string name="installer_app_lock_desc">Also require authentication for the portable installer and Bolt, and protect their screenshots and Recents previews. Requires app lock.</string>
+    <string name="installer_lock_include">Include installer</string>
+    <string name="installer_lock_main_only">Main app only</string>
+    <string name="installer_lock_not_saved">Could not save the installer lock setting. Try again.</string>
+    <string name="installer_lock_prompt_desc">Also require authentication when opening the portable installer or Bolt? This protects their screenshots and Recents previews too. You can change this later in Security settings.</string>
+    <string name="installer_lock_prompt_title">Include the installer in app lock?</string>
+    <string name="kernel_refresh_root">Refresh root access</string>
+    <string name="log_jump_latest">Jump to latest</string>
+    <string name="log_jump_latest_new_output">New output · Jump to latest</string>
+</resources>

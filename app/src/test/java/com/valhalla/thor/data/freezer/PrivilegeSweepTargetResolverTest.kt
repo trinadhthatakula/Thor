@@ -58,6 +58,87 @@ class PrivilegeSweepTargetResolverTest {
     }
 
     @Test
+    fun `tile snapshot reads each member once and preserves freeze-only safety policy`() = runTest {
+        val candidates = mapOf(
+            "active.safe" to FreezeCandidate(FreezeState.ACTIVE),
+            "active.blocked" to FreezeCandidate(FreezeState.ACTIVE, blockedFromFreeze = true),
+            "frozen.blocked" to FreezeCandidate(FreezeState.FROZEN, blockedFromFreeze = true),
+            "missing" to FreezeCandidate(FreezeState.ABSENT, blockedFromFreeze = true),
+        )
+        val reads = mutableListOf<String>()
+        val ops = mutableListOf<BulkOp>()
+        val resolver = PrivilegeSweepTargetResolver(
+            FakeFreezerRepository(candidates.keys), FakeFreezeProfileRepository(), FakePreferenceRepository(),
+            object : PrivilegeSweepResolutionRuntime {
+                override val userId = 0
+                override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate {
+                    ops += op
+                    return { packageName -> reads += packageName; candidates.getValue(packageName) }
+                }
+            },
+        )
+
+        val snapshot = resolver.resolveWatchlistCandidates()
+
+        assertEquals(candidates.keys, reads.toSet())
+        assertEquals(candidates.size, reads.size)
+        assertEquals(listOf(BulkOp.FREEZE), ops)
+        assertEquals(listOf("active.safe"), snapshot.freezeTargets)
+        assertEquals(listOf("frozen.blocked"), snapshot.unfreezeTargets)
+        assertEquals(BulkOp.UNFREEZE, snapshot.operation)
+        assertEquals(listOf("frozen.blocked"), snapshot.targets)
+    }
+
+    @Test
+    fun `tile treats verified external-only suspension as freeze and preserves unknown recovery`() = runTest {
+        val candidates = mapOf(
+            "external.safe" to FreezeCandidate(FreezeState.FROZEN, isDisabled = false, isSuspended = true),
+            "external.blocked" to FreezeCandidate(FreezeState.FROZEN, blockedFromFreeze = true,
+                isDisabled = false, isSuspended = true),
+            "thor.paused" to FreezeCandidate(FreezeState.FROZEN, isDisabled = false, isSuspended = true),
+            "unknown.paused" to FreezeCandidate(FreezeState.FROZEN, isDisabled = false, isSuspended = true),
+            "disabled" to FreezeCandidate(FreezeState.FROZEN, isDisabled = true, isSuspended = true),
+        )
+        val ownershipReads = mutableListOf<String>()
+        val resolver = PrivilegeSweepTargetResolver(
+            FakeFreezerRepository(candidates.keys), FakeFreezeProfileRepository(), FakePreferenceRepository(),
+            object : PrivilegeSweepResolutionRuntime {
+                override val userId = 0
+                override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate = candidates::getValue
+                override suspend fun isAppSuspendedByThor(packageName: String): Boolean? {
+                    ownershipReads += packageName
+                    return when (packageName) {
+                        "external.safe", "external.blocked" -> false
+                        "thor.paused" -> true
+                        else -> null
+                    }
+                }
+            },
+        )
+
+        val snapshot = resolver.resolveWatchlistCandidates()
+
+        assertEquals(listOf("external.safe"), snapshot.freezeTargets)
+        assertEquals(listOf("disabled", "thor.paused", "unknown.paused"), snapshot.unfreezeTargets)
+        assertEquals(candidates.keys - "disabled", ownershipReads.toSet())
+    }
+
+    @Test
+    fun `empty tile snapshot skips PackageManager and UAD reads`() = runTest {
+        val resolver = PrivilegeSweepTargetResolver(
+            FakeFreezerRepository(), FakeFreezeProfileRepository(), FakePreferenceRepository(),
+            object : PrivilegeSweepResolutionRuntime {
+                override val userId = 0
+                override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate =
+                    error("empty membership must not load candidate state")
+            },
+        )
+        val snapshot = resolver.resolveWatchlistCandidates()
+        assertEquals(emptyList<String>(), snapshot.targets)
+        assertEquals(BulkOp.FREEZE, snapshot.operation)
+    }
+
+    @Test
     fun `freeze applies UAD and freeze tier safety filters`() = runTest {
         val candidates = mapOf(
             "active.safe" to FreezeCandidate(FreezeState.ACTIVE),
@@ -75,7 +156,7 @@ class PrivilegeSweepTargetResolverTest {
             PrivilegeSweepSource.FREEZER,
         )
 
-        assertEquals(listOf("active.safe"), spec.packageNames)
+        assertEquals(listOf("active.safe", "already.frozen"), spec.packageNames)
     }
 
     @Test

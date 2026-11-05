@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">フォルダを選択</string>
+    <string name="backup_hub_custom_folder">カスタムフォルダ</string>
+    <string name="backup_hub_delete_access">ストレージへのアクセスが拒否されました。フォルダへのアクセスを復元してから再試行してください。</string>
+    <string name="backup_hub_delete_failed">%1$s を削除できませんでした。</string>
+    <string name="backup_hub_delete_missing">アーカイブが見つかりません。リストを更新してください。</string>
+    <string name="backup_hub_delete_read_only">この場所は読み取り専用です。</string>
+    <string name="backup_hub_delete_unavailable">ストレージプロバイダが削除を完了できませんでした。保存場所を確認して再試行してください。</string>
+    <string name="backup_hub_empty_saved_desc">バックアップを作成するかアプリをエクスポートすると、ここに表示されます。</string>
+    <string name="backup_hub_empty_saved_title">保存済みアーカイブはありません</string>
+    <string name="backup_hub_folder_failed">このフォルダへのアクセスを保存できませんでした。フォルダをもう一度選択してください。</string>
+    <string name="backup_hub_folder_hint">エクスポートとアーカイブの保存に使用するフォルダを選択します。</string>
+    <string name="backup_hub_newest">新しい順</string>
+    <string name="backup_hub_no_matches">検索条件またはフィルタに一致するアーカイブはありません。</string>
+    <string name="backup_hub_saved_archives">保存済みアーカイブ</string>
+    <string name="backup_hub_scan_failed">保存済みアーカイブを更新できませんでした。再試行してください。</string>
+    <string name="backup_hub_search_archives">保存済みアーカイブを検索</string>
+    <string name="backup_hub_source_unavailable">%1$s を完全に読み取れませんでした。一部のアーカイブが表示されていない可能性があります。</string>
+    <string name="installer_app_lock">インストーラにもアプリロックを適用</string>
+    <string name="installer_app_lock_desc">ポータブルインストーラと Bolt にも認証を要求し、スクリーンショットと最近使ったアプリのプレビューを保護します。アプリロックが必要です。</string>
+    <string name="installer_lock_include">インストーラを含める</string>
+    <string name="installer_lock_main_only">メインアプリのみ</string>
+    <string name="installer_lock_not_saved">インストーラのロック設定を保存できませんでした。再試行してください。</string>
+    <string name="installer_lock_prompt_desc">ポータブルインストーラや Bolt を開く際にも認証を要求しますか？スクリーンショットと最近使ったアプリのプレビューも保護されます。後でセキュリティ設定から変更できます。</string>
+    <string name="installer_lock_prompt_title">インストーラにもアプリロックを適用しますか？</string>
+    <string name="kernel_refresh_root">ルートアクセスを更新</string>
+    <string name="log_jump_latest">最新のログへ移動</string>
+    <string name="log_jump_latest_new_output">新しいログ · 最新へ移動</string>
+</resources>

@@ -189,7 +189,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ) = record("setAppSuspended:$packageName:$isSuspended", execution)
+    ) = record("setAppSuspended:$packageName:$isSuspended", execution).map { com.valhalla.thor.domain.model.SuspensionChange() }
 
     override suspend fun setAppRestricted(
         packageName: String,
@@ -730,8 +730,12 @@ class FakePreferenceRepository(
         write { it.copy(useAmoled = enabled) }
     }
 
-    override suspend fun setBiometricLock(enabled: Boolean): Boolean =
-        write(announce = false) { it.copy(biometricLockEnabled = enabled) }
+    override suspend fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean?): Boolean =
+        write(announce = false) { it.copy(biometricLockEnabled = enabled,
+            installerAppLockEnabled = extendToInstaller ?: it.installerAppLockEnabled) }
+
+    override suspend fun setInstallerAppLock(enabled: Boolean): Boolean =
+        write(announce = false) { it.copy(installerAppLockEnabled = enabled) }
 
     override suspend fun setPrivilegeMode(mode: PrivilegeMode?) {
         write { it.copy(preferredPrivilegeMode = mode) }
@@ -744,16 +748,15 @@ class FakePreferenceRepository(
     override suspend fun setLanguage(language: String?): Boolean =
         write(announce = false) { it.copy(language = language) }
 
-    override suspend fun setExportDirUri(uri: String?) {
+    override suspend fun setExportDirUri(uri: String?): Boolean =
         write { it.copy(exportDirUri = uri) }
-    }
 
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         write { it.copy(autoFreezeEnabled = enabled) }
     }
 
-    override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
-        write { it.copy(addFreezerToLauncher = enabled) }
+    override suspend fun setDisableShortcuts(disabled: Boolean) {
+        write { it.copy(disableShortcuts = disabled) }
     }
 
     override suspend fun setFreezerMode(mode: FreezerMode) {
@@ -1138,7 +1141,7 @@ class FakeAppShortcutController(
     val refreshed = mutableListOf<String>()
     val pinned = mutableListOf<String>()
     val pinnedBulkActions = mutableListOf<String>()
-    val dynamicSyncs = mutableListOf<Boolean>()
+    val shortcutSyncs = mutableListOf<Boolean>()
 
     /**
      * Failures the *port* absorbed instead of handing to its caller — see [pinAppShortcut].
@@ -1239,8 +1242,8 @@ class FakeAppShortcutController(
         pinnedBulkActions += action
     }
 
-    override fun syncDynamicShortcuts(enabled: Boolean) {
-        dynamicSyncs += enabled
+    override fun syncShortcuts(enabled: Boolean) {
+        shortcutSyncs += enabled
     }
 }
 

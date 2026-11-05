@@ -44,7 +44,7 @@
     <string name="dynamic_colors">Kolory dynamiczne</string>
     <string name="dynamic_colors_desc">Integracja z Material You</string>
     <string name="biometric_lock">Blokada biometryczna</string>
-    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia przy uruchomieniu. Włączona blokada uniemożliwia robienie zrzutów i nagrywanie ekranu aplikacji Thor oraz ukrywa jej podgląd na liście ostatnich aplikacji.</string>
+    <string name="biometric_lock_desc">Wymagaj uwierzytelnienia przy otwieraniu głównej aplikacji, blokuj jej zrzuty i nagrywanie ekranu oraz ukrywaj podgląd ostatnich aplikacji.</string>
     <string name="biometric_not_available">Biometria niedostępna lub bez zapisanych danych</string>
     <string name="active_engine">Aktywny silnik</string>
     <string name="active_engine_desc">Przełączaj między dostępnymi dostawcami</string>
@@ -364,6 +364,12 @@
         <item quantity="many">%1$d aplikacji · dotknij, aby zamrozić</item>
         <item quantity="other">%1$d aplikacji · dotknij, aby zamrozić</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d aplikacja · dotknij, aby odmrozić</item>
+        <item quantity="few">%1$d aplikacje · dotknij, aby odmrozić</item>
+        <item quantity="many">%1$d aplikacji · dotknij, aby odmrozić</item>
+        <item quantity="other">%1$d aplikacji · dotknij, aby odmrozić</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Najpierw przyznaj Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Brak aplikacji w Zamrażarce</string>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
@@ -371,6 +377,8 @@
          fired before these packages resolved. -->
     <string name="tile_checking">Sprawdzanie…</string>
     <string name="tile_freezing">Zamrażanie…</string>
+    <string name="tile_unfreezing">Odmrażanie…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ustawienia Zamrażarki</string>
@@ -383,8 +391,10 @@
     <string name="auto_freeze_desc">Zamrażaj aplikacje automatycznie, gdy ekran jest zablokowany</string>
     <string name="skip_routine_freeze_confirmation">Nie potwierdzaj rutynowych zamrożeń</string>
     <string name="skip_routine_freeze_confirmation_desc">Zamrażaj aplikacje systemowe bez pytania, chyba że oznacza je lista usuwania. Aplikacje oznaczone jako Expert nadal ostrzegają, a niebezpieczne nadal są odrzucane.</string>
-    <string name="add_freezer_to_launcher">Dodaj Zamrażarkę do launchera</string>
-    <string name="add_freezer_to_launcher_desc">Pokazuj zamrożone aplikacje jako skróty na ekranie głównym, które uruchomisz jednym dotknięciem</string>
+
+    <string name="disable_shortcuts">Wyłącz skróty</string>
+    <string name="disable_shortcuts_desc">Wyłącza skróty Zamrażarki, także te przypięte do ekranu głównego</string>
+    <string name="shortcuts_disabled_message">Skróty są wyłączone w Thorze</string>
     <string name="add_to_home_screen">Dodaj do ekranu głównego</string>
     <string name="freeze_all_apps">Zamroź wszystkie w Zamrażarce</string>
     <string name="shortcuts">Skróty</string>
@@ -501,7 +511,6 @@
     <!-- %1$s is an app name, %2$s a comma-separated list of package names that recorded the
          suspension. Shown when Thor cannot lift a suspension because Android only lets the
          privilege that applied it remove it (API 30+). -->
-    <string name="suspend_owned_by_other_privilege">Nie można stąd wznowić aplikacji %1$s. Zawieszenie pochodzi od: %2$s, a Android pozwala je zdjąć tylko temu samemu uprawnieniu. Przełącz aplikację Thor z powrotem na ten tryb uprawnień i spróbuj ponownie.</string>
     <!-- %1$s is an app name. Shown when a preinstalled app cannot be frozen because this device
          refused to disable it and this build of Android reserves "remove for one user" for uid 0.
          Deliberately names no privilege mode: both the Shizuku and the Dhizuku gateway raise it,

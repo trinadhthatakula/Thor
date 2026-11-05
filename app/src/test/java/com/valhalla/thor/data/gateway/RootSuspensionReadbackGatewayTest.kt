@@ -50,6 +50,56 @@ class RootSuspensionReadbackGatewayTest {
         ShadowProcess.setUid(USER * 100_000 + 10_000)
     }
 
+    @Test fun `read-only classification distinguishes Thor external and unknown without mutation`() = runTest {
+        installSuspended()
+        for ((owners, expected) in listOf(
+            arrayOf(owner(), owner("com.google.android.apps.wellbeing")) to true,
+            arrayOf(owner("com.google.android.apps.wellbeing")) to false,
+            emptyArray<SuspensionOwner>() to null,
+        )) {
+            val service = RecordingService { reply(Protocol.STATUS_SUSPENDED, owners = owners) }
+            val fixture = fixture(service)
+            assertEquals(expected, fixture.gateway.isAppSuspendedByThor(PACKAGE))
+            assertEquals(listOf(PACKAGE to USER), service.reads)
+            assertTrue(service.mutations.isEmpty())
+            assertTrue(fixture.commands.isEmpty())
+        }
+    }
+
+    @Test fun `root adds its own slot while retaining wellbeing suspension`() = runTest {
+        installSuspended()
+        val service = RecordingService { index -> reply(Protocol.STATUS_SUSPENDED,
+            owners = if (index == 0) arrayOf(owner("com.google.android.apps.wellbeing"))
+                else arrayOf(owner(), owner("com.google.android.apps.wellbeing"))) }
+        val fixture = fixture(service)
+        val result = fixture.gateway.setAppSuspended(PACKAGE, true, EXECUTION).getOrThrow()
+        assertEquals(setOf("com.google.android.apps.wellbeing"), result.remainingOwners)
+        assertEquals(listOf(Mutation(PACKAGE, true, context.packageName, USER)), service.mutations)
+        assertTrue(fixture.commands.isEmpty())
+    }
+
+    @Test fun `root verifies own removal while aggregate suspension remains true`() = runTest {
+        installSuspended()
+        val service = RecordingService { index -> reply(Protocol.STATUS_SUSPENDED,
+            owners = if (index == 0) arrayOf(owner(), owner("com.google.android.apps.wellbeing"))
+                else arrayOf(owner("com.google.android.apps.wellbeing"))) }
+        val fixture = fixture(service)
+        val result = fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).getOrThrow()
+        assertEquals(setOf("com.google.android.apps.wellbeing"), result.remainingOwners)
+        assertEquals(listOf(Mutation(PACKAGE, false, context.packageName, USER)), service.mutations)
+    }
+
+    @Test fun `external wellbeing and cross-user restrictions are returned without mutation`() = runTest {
+        installSuspended()
+        val service = RecordingService { reply(Protocol.STATUS_SUSPENDED,
+            owners = arrayOf(owner("com.google.android.apps.wellbeing"), owner("android", 0))) }
+        val fixture = fixture(service)
+        val result = fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).getOrThrow()
+        assertEquals(setOf("com.google.android.apps.wellbeing", "android"), result.remainingOwners)
+        assertTrue(service.mutations.isEmpty())
+        assertTrue(fixture.commands.isEmpty())
+    }
+
     @Test
     fun `unknown refused absent stale and cross-user ownership stop before all writes`() = runTest {
         installSuspended()
@@ -58,8 +108,6 @@ class RootSuspensionReadbackGatewayTest {
             reply(Protocol.STATUS_UNKNOWN, reason = Protocol.REASON_MISSING_USER),
             reply(Protocol.STATUS_REFUSED, reason = Protocol.REASON_USER_MISMATCH),
             reply(Protocol.STATUS_NOT_INSTALLED),
-            reply(Protocol.STATUS_SUSPENDED, owners = arrayOf(owner("android", 0))),
-            reply(Protocol.STATUS_SUSPENDED, owners = arrayOf(owner(), owner("android", 0))),
             reply(Protocol.STATUS_NOT_SUSPENDED).apply { userId = 0 },
         )
         for (response in responses) {
@@ -101,11 +149,11 @@ class RootSuspensionReadbackGatewayTest {
     }
 
     @Test
-    fun `same-user owners are each removed once and explicit complete read verifies success`() = runTest {
+    fun `only Thor owners are removed and shared legacy identities stay external`() = runTest {
         val service = RecordingService { index ->
             if (index == 0) reply(
                 Protocol.STATUS_SUSPENDED,
-                owners = arrayOf(owner("com.valhalla.thor.debug"), owner(), owner("root")),
+                owners = arrayOf(owner(), owner("com.android.shell"), owner("root")),
             ) else reply(Protocol.STATUS_NOT_SUSPENDED)
         }
         val fixture = fixture(service)
@@ -113,7 +161,7 @@ class RootSuspensionReadbackGatewayTest {
         fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).getOrThrow()
 
         assertEquals(
-            listOf("com.valhalla.thor.debug", "com.android.shell", "root").map { Mutation(PACKAGE, false, it, USER) },
+            listOf("com.valhalla.thor.debug").map { Mutation(PACKAGE, false, it, USER) },
             service.mutations,
         )
         assertEquals(listOf(PACKAGE to USER, PACKAGE to USER), service.reads)
@@ -174,7 +222,7 @@ class RootSuspensionReadbackGatewayTest {
             assertTrue(fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).isFailure)
 
             assertEquals(1, service.mutations.size)
-            assertEquals(2, service.reads.size)
+            assertEquals(1, service.reads.size)
             assertEquals(1, fixture.binds)
             assertTrue(fixture.commands.isEmpty())
             assertEquals(0, service.legacyReads)
@@ -182,7 +230,7 @@ class RootSuspensionReadbackGatewayTest {
     }
 
     @Test
-    fun `legacy false stops later writes and independent local read can confirm late success`() = runTest {
+    fun `unreadable owner state remains unverified even after legacy boolean false`() = runTest {
         installSuspended()
         val service = RecordingService { index ->
             if (index == 0) reply(Protocol.STATUS_SUSPENDED, owners = arrayOf(owner(), owner("android")))
@@ -195,7 +243,7 @@ class RootSuspensionReadbackGatewayTest {
         }
         val fixture = fixture(service)
 
-        fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).getOrThrow()
+        assertTrue(fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).isFailure)
 
         assertEquals(1, service.mutations.size)
         assertEquals(2, service.reads.size)
@@ -231,16 +279,16 @@ class RootSuspensionReadbackGatewayTest {
 
     @Test
     @Config(sdk = [28])
-    fun `API 28 retains one shell removal for the current Android user`() = runTest {
+    fun `API 28 never guesses a shared legacy suspender`() = runTest {
         installSuspended()
         val fixture = fixture(RecordingService { error("API 28 must not bind") }) {
             setLocalSuspended(false)
         }
 
-        fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).getOrThrow()
+        assertTrue(fixture.gateway.setAppSuspended(PACKAGE, false, EXECUTION).isFailure)
 
-        assertEquals("pm unsuspend --user $USER '$PACKAGE'", fixture.commands.single().text)
-        assertEquals(0, fixture.binds)
+        assertTrue(fixture.commands.isEmpty())
+        assertEquals(1, fixture.binds)
         assertTrue(fixture.service.mutations.isEmpty())
     }
 
@@ -338,7 +386,7 @@ class RootSuspensionReadbackGatewayTest {
         const val USER = 10
         val EXECUTION = PrivilegeExecutionContext()
 
-        fun owner(packageName: String = "com.android.shell", userId: Int = USER) = SuspensionOwner().apply {
+        fun owner(packageName: String = "com.valhalla.thor.debug", userId: Int = USER) = SuspensionOwner().apply {
             this.packageName = packageName
             this.userId = userId
         }

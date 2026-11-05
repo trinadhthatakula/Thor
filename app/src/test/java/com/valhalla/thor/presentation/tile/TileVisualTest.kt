@@ -128,8 +128,23 @@ class TileVisualTest {
     }
 
     @Test
-    fun `READY is active`() {
-        assertEquals(Tile.STATE_ACTIVE, tileStateFor(TileVisual.READY))
+    fun `READY is inactive until apps are frozen`() {
+        assertEquals(Tile.STATE_INACTIVE, tileStateFor(TileVisual.READY))
+    }
+
+    @Test
+    fun `frozen apps light the tile and offer unfreeze even in a mixed watchlist`() {
+        assertEquals(TileVisual.READY_TO_UNFREEZE,
+            tileVisualFor(rooted, freezableCount = 0, isRunning = false, unfreezeCount = 2))
+        assertEquals(TileVisual.READY_TO_UNFREEZE,
+            tileVisualFor(rooted, freezableCount = 3, isRunning = false, unfreezeCount = 2))
+        assertEquals(Tile.STATE_ACTIVE, tileStateFor(TileVisual.READY_TO_UNFREEZE))
+    }
+
+    @Test
+    fun `unknown unfreeze count cannot paint a completed snapshot`() {
+        assertEquals(TileVisual.CHECKING,
+            tileVisualFor(rooted, freezableCount = 0, isRunning = false, unfreezeCount = null))
     }
 
     @Test

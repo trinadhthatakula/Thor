@@ -109,6 +109,7 @@ data class PrivilegeSweepStatus(
     val unresolved: Int,
     val rootLaneDegraded: Boolean,
     val profileIds: Set<Long> = emptySet(),
+    val externalSuspensionRemains: Boolean = false,
 )
 
 sealed interface PrivilegeSweepLaunchResult {

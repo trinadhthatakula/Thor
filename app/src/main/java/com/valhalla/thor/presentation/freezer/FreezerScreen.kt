@@ -783,7 +783,7 @@ fun FreezerScreen(
             hasPrivilege = hasPrivilege,
             showImportDisabledApps = disabledAppsNotInFreezer.isNotEmpty(),
             appListType = state.appListType,
-            showLauncherPinActions = state.addFreezerToLauncher && viewModel.isPinSupported(),
+            showLauncherPinActions = !state.disableShortcuts && viewModel.isPinSupported(),
             onToggleView = viewModel::toggleGridMode,
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             freezerMode = state.freezerMode,

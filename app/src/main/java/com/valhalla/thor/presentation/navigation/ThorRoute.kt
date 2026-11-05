@@ -67,6 +67,9 @@ sealed interface ThorRoute : NavKey {
     @Serializable
     data object SettingsEditor : ThorRoute
 
+    @Serializable
+    data object KernelFlasher : ThorRoute
+
     /** @param uriString null when the user came from Settings and still has to pick a file. */
     @Serializable
     data class ArchiveRestore(val uriString: String? = null) : ThorRoute

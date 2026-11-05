@@ -142,10 +142,10 @@ enum class SettingsRowId(
         R.string.skip_routine_freeze_confirmation,
         R.string.skip_routine_freeze_confirmation_desc,
     ),
-    ADD_FREEZER_TO_LAUNCHER(
+    DISABLE_SHORTCUTS(
         SettingsCategory.FREEZER,
-        R.string.add_freezer_to_launcher,
-        R.string.add_freezer_to_launcher_desc,
+        R.string.disable_shortcuts,
+        R.string.disable_shortcuts_desc,
     ),
     UNFREEZE_ALL(
         SettingsCategory.FREEZER,
@@ -173,6 +173,7 @@ enum class SettingsRowId(
 
     // ── Security ────────────────────────────────────────────────────────────────────────────────
     BIOMETRIC_LOCK(SettingsCategory.SECURITY, R.string.biometric_lock, R.string.biometric_lock_desc),
+    INSTALLER_APP_LOCK(SettingsCategory.SECURITY, R.string.installer_app_lock, R.string.installer_app_lock_desc),
     USAGE_ACCESS(
         SettingsCategory.SECURITY,
         R.string.usage_access,

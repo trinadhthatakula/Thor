@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -69,8 +70,7 @@ import com.valhalla.thor.presentation.home.components.RootManagerPickerSheet
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import com.valhalla.thor.presentation.home.components.SupportCommunitySection
 import com.valhalla.thor.presentation.home.components.homeActionRows
-import com.valhalla.thor.presentation.installer.InstallerViewModel
-import com.valhalla.thor.presentation.installer.PortableInstaller
+import com.valhalla.thor.presentation.installer.createPortableInstallerIntent
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.theme.LocalDarkTheme
 import com.valhalla.thor.presentation.theme.greenDark
@@ -102,21 +102,19 @@ fun HomeScreen(
     onNavigateToExtensionManager: () -> Unit,
     onNavigateToBackupRestoreHub: () -> Unit,
     viewModel: HomeViewModel = koinViewModel(),
-    installerViewModel: InstallerViewModel = koinViewModel()
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showPrivilegeSheet by remember { mutableStateOf(false) }
     var showRootManagerPicker by remember { mutableStateOf(false) }
 
-    var showInstallerSheet by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            installerViewModel.parsePackage(it)
-            showInstallerSheet = true
+            context.startActivity(createPortableInstallerIntent(context, it))
         }
     }
 
@@ -560,13 +558,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    if (showInstallerSheet) {
-        PortableInstaller(
-            onDismiss = { showInstallerSheet = false },
-            viewModel = installerViewModel
-        )
     }
 
     if (showSupportSheet) {

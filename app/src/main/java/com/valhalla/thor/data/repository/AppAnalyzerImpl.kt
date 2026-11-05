@@ -18,6 +18,8 @@ import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.model.PrivilegeCommandClass
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
+import com.valhalla.thor.data.kernel.inspectPortableKernel
+import com.valhalla.thor.domain.model.PortablePackage
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
@@ -52,7 +54,13 @@ class AppAnalyzerImpl(
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppAnalyzer {
 
-    override suspend fun analyze(uri: Uri): Result<AnalyzedPackage> = withContext(ioDispatcher) {
+    override suspend fun analyze(uri: Uri): Result<AnalyzedPackage> =
+        stageAndAnalyze(uri, allowKernel = false).map { (it as PortablePackage.App).analysis }
+
+    override suspend fun analyzePortable(uri: Uri): Result<PortablePackage> =
+        stageAndAnalyze(uri, allowKernel = true)
+
+    private suspend fun stageAndAnalyze(uri: Uri, allowKernel: Boolean): Result<PortablePackage> = withContext(ioDispatcher) {
         val displayName = uri.getDisplayName(context)
         // Random, unpredictable temp names (CWE-377): avoids collisions between
         // concurrent analyses and predictable cache paths.
@@ -99,7 +107,7 @@ class AppAnalyzerImpl(
                         )
                     )
                 } else {
-                    readMetadata(bundleFile, apkFile, displayName)
+                    readPortableMetadata(bundleFile, apkFile, displayName, allowKernel)
                 }
             } else {
                 // Keep provider selection and privileged writer ownership inside the repository.
@@ -116,7 +124,7 @@ class AppAnalyzerImpl(
                             commandTimeout = 9.minutes,
                         ),
                     ).getOrThrow()
-                    readMetadata(bundleFile, apkFile, displayName)
+                    readPortableMetadata(bundleFile, apkFile, displayName, allowKernel)
                 } else {
                     Result.failure(Exception("Could not open the selected file."))
                 }
@@ -137,7 +145,6 @@ class AppAnalyzerImpl(
         }
 
         val analyzed = metadata
-            .map { AnalyzedPackage(it, StagedPackage(bundleFile, displayName)) }
             // Nobody is going to install a file we could not describe, so this is the last
             // chance to delete it; on success the caller owns it until discard().
             .onFailure { bundleFile.delete() }
@@ -150,6 +157,18 @@ class AppAnalyzerImpl(
         // there ever is a next analysis.
         if (!isActive) bundleFile.delete()
         analyzed
+    }
+
+    private fun readPortableMetadata(
+        file: File, scratch: File, displayName: String?, allowKernel: Boolean,
+    ): Result<PortablePackage> {
+        if (allowKernel) inspectPortableKernel(file)?.let { inspection ->
+            check(file.setReadOnly()) { "Cannot protect the selected kernel ZIP." }
+            return Result.success(PortablePackage.Kernel(StagedPackage(file, displayName), inspection.sha256))
+        }
+        return readMetadata(file, scratch, displayName).map {
+            PortablePackage.App(AnalyzedPackage(it, StagedPackage(file, displayName)))
+        }
     }
 
     override fun discard(analyzed: AnalyzedPackage?) {

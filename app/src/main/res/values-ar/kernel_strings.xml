@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">أداة تفليش النواة</string>
+    <string name="kernel_description">فلّش ملف ZIP لنواة AnyKernel3 باستخدام صلاحية Root.</string>
+    <string name="kernel_requirements">يتطلب صلاحية Root ونسخة تعمل من BusyBox مرفقة مع Magisk أو KernelSU أو APatch. لا تُدعم تنسيقات ZIP الأخرى أو صور الإقلاع.</string>
+    <string name="kernel_warning">لا تفلّش إلا حزمة من مصدر تثق به ومصممة لطراز جهازك ونظام ROM الذي تستخدمه تحديدًا. تعمل سكربتاتها وأدواتها الأصلية بصلاحية Root ويمكنها تعديل أقسام الإقلاع والبيانات وأمان الجهاز. قد يمنع التفليش غير المتوافق أو المتوقف Android من بدء التشغيل. احتفظ بصورة إقلاع تعرف أنها تعمل وبوسيلة لاستعادتها خارج Thor.</string>
+    <string name="kernel_choose">اختيار ملف ZIP بتنسيق AnyKernel3</string>
+    <string name="kernel_flash">تفليش النواة</string>
+    <string name="kernel_confirm_title">هل تريد تفليش هذه النواة؟</string>
+    <string name="kernel_acknowledge">أثق بهذه الحزمة وتحققت من توافقها مع جهازي ولدي وسيلة لاستعادة الجهاز.</string>
+    <string name="kernel_confirmation">لا يمكن إلغاء التفليش بعد بدئه. يتحقق فحص ZIP من التنسيق فقط، ولا يضمن التوافق أو الأمان. لن يعيد Thor تشغيل الجهاز أو يحاول التفليش مجددًا أو يستعيد النواة السابقة تلقائيًا.</string>
+    <string name="kernel_root_required">امنح Thor صلاحية Root لاختيار نواة وتفليشها.</string>
+    <string name="kernel_preparing">جارٍ فحص ملف ZIP…</string>
+    <string name="kernel_starting">جارٍ تجهيز أداة التثبيت بصلاحية Root…</string>
+    <string name="kernel_running">جارٍ تفليش النواة. لا تطفئ الجهاز أو تفرض إيقاف Thor.</string>
+    <string name="kernel_success">انتهت أداة التثبيت بنجاح. لم يتم التحقق من توافق الإقلاع. راجع السجل قبل إعادة التشغيل.</string>
+    <string name="kernel_failed">فشلت العملية. راجع التفاصيل أدناه.</string>
+    <string name="kernel_unknown">نتيجة أداة التثبيت غير معروفة. قد تكون ما زالت تعمل أو ربما غيّرت الجهاز جزئيًا. لا تبدأ تفليشًا آخر. راجع السجل وإجراءات استعادة جهازك.</string>
+    <string name="kernel_boot_lock">يُحظر التفليش مجددًا حتى يتم رصد إقلاع جديد للجهاز. قد تتطلب إعادة التشغيل بعد فشل التفليش استعادة الجهاز بأدوات خارجية.</string>
+    <string name="kernel_save_log">حفظ السجل</string>
+    <string name="kernel_reboot">إعادة تشغيل الجهاز</string>
+    <string name="kernel_reboot_confirm">هل تريد إعادة تشغيل الجهاز الآن؟</string>
+    <string name="kernel_service_blocked">فعّل قناة إشعارات أداة تفليش النواة وحاول مجددًا أثناء فتح Thor.</string>
+    <string name="kernel_hash">SHA-256: %1$s</string>
+    <string name="kernel_open">فتح أداة التفليش</string>
+    <string name="kernel_package_heading">1. حزمة النواة</string>
+    <string name="kernel_slot_heading">2. فتحة الوجهة</string>
+    <string name="kernel_change_package">تغيير ZIP</string>
+    <string name="kernel_package_details">تفاصيل الحزمة</string>
+    <string name="kernel_slot_default">إعداد الحزمة الافتراضي</string>
+    <string name="kernel_slot_current">الفتحة الحالية (%1$s)</string>
+    <string name="kernel_slot_inactive">الفتحة غير النشطة (%1$s)</string>
+    <string name="kernel_slot_description">تتولى الحزمة اختيار الفتحة. استخدم ملف ZIP مصممًا لهذا الجهاز فقط.</string>
+    <string name="kernel_slot_unknown">تعذر تحديد الفتحة الحالية. ستختار الحزمة وجهتها.</string>
+    <string name="kernel_slot_unsupported">لا تعلن هذه الحزمة دعم اختيار الفتحة القياسي في AnyKernel3. استخدم وجهتها الافتراضية.</string>
+    <string name="kernel_single_slot">لا يعلن هذا الجهاز وجود فتحات A/B. ستختار الحزمة وجهتها.</string>
+    <string name="kernel_inactive_warning">استخدم الفتحة غير النشطة فقط إذا كانت تحتوي على نظام متوافق. لا يغيّر Thor الفتحة التي ستُستخدم في الإقلاع التالي.</string>
+    <string name="kernel_before_flash">قبل التفليش</string>
+    <string name="kernel_safety_summary">استخدم ملف ZIP موثوقًا لطراز جهازك تحديدًا واحتفظ بصورة استرداد. سيُطلب منك التأكيد قبل التفليش.</string>
+    <string name="kernel_slot_both">كلتا الفتحتين (A + B)</string>
+    <string name="kernel_both_warning">يشغّل المثبّت بالكامل مرتين: الفتحة الحالية ثم غير النشطة. استخدم فقط حزمة يدعم مؤلفها التثبيت المتكرر على كلا النظامين المثبّتين. قد يستبدل ذلك النواتين ويزيل النسخة الاحتياطية غير المعدّلة ويكرّر التغييرات المشتركة. قد يترك الفشل فتحة واحدة فقط محدّثة. لا يستطيع Thor التراجع أو تغيير فتحة الإقلاع التالية.</string>
+    <string name="kernel_both_acknowledge">أفهم أن كلتا الفتحتين قد تتغيران وأن هذه الحزمة تدعم كلا النظامين المثبّتين والتثبيت المتكرر.</string>
+    <string name="kernel_both_partial">نجحت عملية واحدة على الأقل، لكن لم يكتمل تحديث كلتا الفتحتين بنجاح. راجع كل عملية في السجل؛ لم يتم التراجع عن التغييرات.</string>
+    <string name="kernel_shared_blocked">هناك عملية نواة أخرى نشطة أو تنتظر إعادة تشغيل الجهاز. افتح أداة تفليش النواة في الإضافات لمراجعتها قبل مشاركة ملف ZIP آخر.</string>
+</resources>

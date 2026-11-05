@@ -66,6 +66,15 @@
         android:theme="@style/Theme.Thor.SplashScreen"
         tools:targetApi="33">
 
+        <service
+            android:name=".data.kernel.KernelFlashService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-confirmed AnyKernel3 kernel installation on a rooted device; must continue until partition writes finish." />
+        </service>
+
         <activity
             android:name=".HomeActivity"
             android:exported="true"
@@ -141,7 +150,28 @@
         <activity
             android:name=".presentation.installer.PortableInstallerActivity"
             android:exported="true"
+            android:label="@string/title_thor_installer"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
+
+            <!-- Shared documents are classified from private staged bytes, never their MIME alone. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.android.package-archive" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/x-apks" />
+                <data android:mimeType="application/vnd.apks" />
+                <data android:mimeType="application/x-xapk" />
+                <data android:mimeType="application/vnd.xapk" />
+                <data android:mimeType="application/x-apkm" />
+                <data android:mimeType="application/apkm" />
+                <data android:mimeType="application/vnd.apkm" />
+                <data android:mimeType="application/vnd.apkm-archive" />
+                <data android:mimeType="application/x-apkp" />
+                <data android:mimeType="application/vnd.apkp" />
+            </intent-filter>
 
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -203,6 +233,21 @@
                      Both matchers are case-sensitive (hence upper/lower variants); the
                      runtime type check in BundleAnalysis is case-insensitive and inspects
                      ZIP contents. -->
+                <!-- .zip (AnyKernel3 or APK bundle; contents decide the UI) -->
+                <data android:pathSuffix=".zip" />
+                <data android:pathSuffix=".ZIP" />
+                <data android:pathPattern=".*\\.zip" />
+                <data android:pathPattern=".*\\..*\\.zip" />
+                <data android:pathPattern=".*\\..*\\..*\\.zip" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.zip" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.zip" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.zip" />
+                <data android:pathPattern=".*\\.ZIP" />
+                <data android:pathPattern=".*\\..*\\.ZIP" />
+                <data android:pathPattern=".*\\..*\\..*\\.ZIP" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.ZIP" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.ZIP" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.ZIP" />
                 <!-- .apk -->
                 <data android:pathSuffix=".apk" />
                 <data android:pathSuffix=".APK" />

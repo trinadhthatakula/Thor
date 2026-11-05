@@ -10,6 +10,14 @@ import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.domain.repository.BackupArchiveScanner
+import com.valhalla.thor.domain.repository.BackupArchiveScan
+import com.valhalla.thor.domain.repository.ArchiveDeleteResult
+import com.valhalla.thor.domain.repository.TaskQueueRepository
+import com.valhalla.thor.domain.model.QueuedTaskSummary
+import com.valhalla.thor.domain.model.QueuedTaskDetail
+import com.valhalla.thor.presentation.FakePreferenceRepository
+import java.util.UUID
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -34,16 +42,21 @@ class BackupRestoreHubViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val fakeApplication = FakeApplication(File("/tmp"))
+    private val taskQueue = object : TaskQueueRepository {
+        override val tasks: Flow<List<QueuedTaskSummary>> = flowOf(emptyList())
+        override fun observe(taskId: UUID): Flow<QueuedTaskDetail?> = flowOf(null)
+    }
+    private val preferences = FakePreferenceRepository()
 
     private class FakeScanner(var items: List<BackupArchiveItem> = emptyList()) : BackupArchiveScanner {
         var deletedItems = mutableListOf<BackupArchiveItem>()
 
-        override fun scanBackups(): Flow<List<BackupArchiveItem>> = flowOf(items)
+        override fun scanBackups(): Flow<BackupArchiveScan> = flowOf(BackupArchiveScan(items))
 
-        override suspend fun deleteArchive(item: BackupArchiveItem): Boolean {
+        override suspend fun deleteArchive(item: BackupArchiveItem): ArchiveDeleteResult {
             deletedItems.add(item)
             items = items.filter { it.id != item.id }
-            return true
+            return ArchiveDeleteResult.Deleted
         }
     }
 
@@ -87,14 +100,14 @@ class BackupRestoreHubViewModelTest {
         val scannerOnlyBackups = FakeScanner(
             listOf(createItem(1, "app.thorbak", BackupArchiveKind.DATA_BACKUP))
         )
-        val vm1 = BackupRestoreHubViewModel(scannerOnlyBackups, FakeAppRepository(), fakeApplication)
+        val vm1 = BackupRestoreHubViewModel(scannerOnlyBackups, FakeAppRepository(), fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
         assertFalse("Only backups present -> no filter chips", vm1.state.value.showFilterChips)
 
         val scannerOnlyBundles = FakeScanner(
             listOf(createItem(2, "app.xapk", BackupArchiveKind.APP_BUNDLE))
         )
-        val vm2 = BackupRestoreHubViewModel(scannerOnlyBundles, FakeAppRepository(), fakeApplication)
+        val vm2 = BackupRestoreHubViewModel(scannerOnlyBundles, FakeAppRepository(), fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
         assertFalse("Only bundles present -> no filter chips", vm2.state.value.showFilterChips)
 
@@ -104,7 +117,7 @@ class BackupRestoreHubViewModelTest {
                 createItem(2, "app.xapk", BackupArchiveKind.APP_BUNDLE),
             )
         )
-        val vm3 = BackupRestoreHubViewModel(scannerBoth, FakeAppRepository(), fakeApplication)
+        val vm3 = BackupRestoreHubViewModel(scannerBoth, FakeAppRepository(), fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
         assertTrue("Both present -> filter chips shown", vm3.state.value.showFilterChips)
     }
@@ -114,7 +127,7 @@ class BackupRestoreHubViewModelTest {
         val backup = createItem(1, "backup.thorbak", BackupArchiveKind.DATA_BACKUP)
         val bundle = createItem(2, "bundle.xapk", BackupArchiveKind.APP_BUNDLE)
         val scanner = FakeScanner(listOf(backup, bundle))
-        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository(), fakeApplication)
+        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository(), fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
 
         assertEquals(2, vm.state.value.filteredArchives.size)
@@ -126,7 +139,7 @@ class BackupRestoreHubViewModelTest {
         assertEquals(listOf(bundle), vm.state.value.filteredArchives)
 
         vm.setFilter(BackupHubFilter.ALL)
-        assertEquals(listOf(backup, bundle), vm.state.value.filteredArchives)
+        assertEquals(listOf(bundle, backup), vm.state.value.filteredArchives)
     }
 
     private fun createAppInfo(
@@ -164,7 +177,7 @@ class BackupRestoreHubViewModelTest {
         val app1 = createAppInfo(packageName = "com.spotify.music", appName = "Spotify", isSystem = false)
         val app2 = createAppInfo(packageName = "org.telegram.messenger", appName = "Telegram", isSystem = false)
         val repo = FakeAppRepository(listOf(app1, app2))
-        val vm = BackupRestoreHubViewModel(FakeScanner(), repo, fakeApplication)
+        val vm = BackupRestoreHubViewModel(FakeScanner(), repo, fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
 
         assertEquals(2, vm.state.value.installedApps.size)
@@ -186,7 +199,7 @@ class BackupRestoreHubViewModelTest {
     fun archiveDeletion_removesItemAndRefreshes() = runTest(testDispatcher) {
         val item = createItem(1, "app.thorbak", BackupArchiveKind.DATA_BACKUP)
         val scanner = FakeScanner(listOf(item))
-        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository(), fakeApplication)
+        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository(), fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
 
         assertEquals(1, vm.state.value.archives.size)
@@ -206,7 +219,7 @@ class BackupRestoreHubViewModelTest {
         val backupItem = createItem(1, "app.thorbak", BackupArchiveKind.DATA_BACKUP)
         val bundleItem = createItem(2, "app.xapk", BackupArchiveKind.APP_BUNDLE)
         val scanner = FakeScanner(listOf(backupItem, bundleItem))
-        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository(), fakeApplication)
+        val vm = BackupRestoreHubViewModel(scanner, FakeAppRepository(), fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
 
         vm.setFilter(BackupHubFilter.DATA_BACKUPS)
@@ -227,13 +240,13 @@ class BackupRestoreHubViewModelTest {
         val flow2 = kotlinx.coroutines.flow.MutableSharedFlow<List<BackupArchiveItem>>(replay = 1)
         var flowIndex = 0
         val dynamicScanner = object : BackupArchiveScanner {
-            override fun scanBackups(): Flow<List<BackupArchiveItem>> {
-                return if (flowIndex++ == 0) flow1 else flow2
+            override fun scanBackups(): Flow<BackupArchiveScan> {
+                return (if (flowIndex++ == 0) flow1 else flow2).map { BackupArchiveScan(it) }
             }
-            override suspend fun deleteArchive(item: BackupArchiveItem) = true
+            override suspend fun deleteArchive(item: BackupArchiveItem) = ArchiveDeleteResult.Deleted
         }
 
-        val vm = BackupRestoreHubViewModel(dynamicScanner, FakeAppRepository(), fakeApplication)
+        val vm = BackupRestoreHubViewModel(dynamicScanner, FakeAppRepository(), fakeApplication, taskQueue, preferences)
         advanceUntilIdle()
 
         // Trigger a second scan

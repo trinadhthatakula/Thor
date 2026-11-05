@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -203,7 +204,7 @@ class SettingsViewModel(
      * is facing, so the message names the state the lock is *actually* in — the opposite of the one
      * they just asked for.
      */
-    fun setBiometricLock(enabled: Boolean) {
+    fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean? = null) {
         viewModelScope.launch {
             if (enabled && !biometricHelper.canAuthenticate()) {
                 _events.send(
@@ -216,13 +217,21 @@ class SettingsViewModel(
                 )
                 return@launch
             }
-            if (!preferenceRepository.setBiometricLock(enabled)) {
+            if (!preferenceRepository.setBiometricLock(enabled, extendToInstaller)) {
                 _events.send(
                     UiText.StringResource(
                         if (enabled) R.string.biometric_lock_not_saved_still_off
                         else R.string.biometric_lock_not_saved_still_on
                     )
                 )
+            }
+        }
+    }
+
+    fun setInstallerAppLock(enabled: Boolean) {
+        viewModelScope.launch {
+            if (!preferenceRepository.setInstallerAppLock(enabled)) {
+                _events.send(UiText.StringResource(R.string.installer_lock_not_saved))
             }
         }
     }
@@ -304,10 +313,11 @@ class SettingsViewModel(
         }
     }
 
-    fun setAddFreezerToLauncher(enabled: Boolean) {
+    fun setDisableShortcuts(disabled: Boolean) {
         viewModelScope.launch {
-            preferenceRepository.setAddFreezerToLauncher(enabled)
-            appShortcuts.syncDynamicShortcuts(enabled)
+            preferenceRepository.setDisableShortcuts(disabled)
+            val prefs = preferenceRepository.userPreferences.first()
+            appShortcuts.syncShortcuts(!prefs.settingsLost && !prefs.disableShortcuts)
         }
     }
 

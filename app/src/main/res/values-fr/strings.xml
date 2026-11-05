@@ -30,7 +30,7 @@
     <string name="dynamic_colors">Couleurs dynamiques</string>
     <string name="dynamic_colors_desc">Intégration Material You</string>
     <string name="biometric_lock">Verrouillage biométrique</string>
-    <string name="biometric_lock_desc">Exiger une authentification au lancement. Une fois activé, le verrouillage bloque les captures et enregistrements d’écran de Thor et masque son aperçu dans les applications récentes.</string>
+    <string name="biometric_lock_desc">Exiger une authentification à l’ouverture de l’application principale, bloquer ses captures et enregistrements d’écran et masquer son aperçu dans les applications récentes.</string>
     <string name="biometric_not_available">Biométrie non enregistrée ou indisponible</string>
     <string name="active_engine">Moteur actif</string>
     <string name="active_engine_desc">Passer d\'un fournisseur à l\'autre</string>
@@ -225,10 +225,16 @@
         <item quantity="one">%1$d appli · appuyer pour geler</item>
         <item quantity="other">%1$d applis · appuyer pour geler</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d appli · appuyer pour dégeler</item>
+        <item quantity="other">%1$d applis · appuyer pour dégeler</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Accordez Root / Shizuku / Dhizuku d\'abord</string>
     <string name="tile_no_apps_toast">Aucune application dans le Congélateur</string>
     <string name="tile_checking">Vérification…</string>
     <string name="tile_freezing">Gel en cours…</string>
+    <string name="tile_unfreezing">Dégel en cours…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>
@@ -496,7 +502,6 @@
     
     <!-- Missing Translations -->
     <string name="removed_from_freezer_partial_failure">%1$d/%2$d applications retirées du congélateur (%3$d échouées)</string>
-    <string name="suspend_owned_by_other_privilege">Impossible de lever la suspension de %1$s ici. Elle a été suspendue par %2$s, et Android n\'autorise que le même privilège à la lever. Repassez Thor dans ce mode de privilège, puis réessayez.</string>
     <string name="freeze_system_app_requires_root">Impossible de geler %1$s ici. Cet appareil n\'a pas laissé Thor la désactiver, et Android n\'autorise que root à supprimer une application préinstallée pour un seul utilisateur. L\'application n\'a pas été modifiée — la geler nécessite le mode Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">Impossible de geler %1$s. Cet appareil n\'a pas laissé Thor la désactiver, et sa suppression pour cet utilisateur a également échoué. Android a signalé : %2$s</string>
     <string name="freeze_system_app_disable_refused">Impossible de geler %1$s. Cet appareil a refusé de la désactiver, alors Thor l\'a laissée intacte — la supprimer à la place pourrait vous déconnecter des comptes qu\'elle gère.</string>
@@ -572,8 +577,10 @@
     <string name="suspend_instead_of_freeze_desc">Lors de la congélation (y compris la congélation automatique), suspendez les applications au lieu de les désactiver. Les applications suspendues restent visibles mais en pause.</string>
     <string name="skip_routine_freeze_confirmation">Ne pas confirmer les gels courants</string>
     <string name="skip_routine_freeze_confirmation_desc">Geler les applications système sans demander d\'abord, sauf si la liste UAD les signale. Celles marquées Expert avertissent toujours et les dangereuses restent bloquées.</string>
-    <string name="add_freezer_to_launcher">Ajouter le Congélateur au lanceur</string>
-    <string name="add_freezer_to_launcher_desc">Afficher les applications congelées comme raccourcis d\'écran d\'accueil pour les lancer d\'un simple geste</string>
+
+    <string name="disable_shortcuts">Désactiver les raccourcis</string>
+    <string name="disable_shortcuts_desc">Désactive les raccourcis du Congélateur, y compris ceux épinglés sur l\'écran d\'accueil</string>
+    <string name="shortcuts_disabled_message">Les raccourcis sont désactivés dans Thor</string>
     <string name="add_to_home_screen">Ajouter à l\'écran d\'accueil</string>
     <string name="freeze_all_apps">Tout congeler dans le Congélateur</string>
     <string name="shortcuts">Raccourcis</string>

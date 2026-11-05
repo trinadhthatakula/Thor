@@ -3,8 +3,9 @@
 
 package com.valhalla.thor.data.source.local.room
 
+import androidx.room3.support.getSupportWrapper
 import android.content.Context
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.domain.model.BundleFormat
@@ -144,12 +145,12 @@ class DataTaskIdentityDaoTest {
         dao.claimNextPendingItem(TASK_ID, TASK_CLAIM, ITEM_CLAIM, 2_100L, 4_000L)
 
         assertTrue(dao.hasClaimTokens(TASK_CLAIM, ITEM_CLAIM))
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_tasks SET claim_token = NULL WHERE task_id = ?",
             arrayOf(TASK_ID),
         )
         assertTrue(dao.hasClaimTokens(TASK_CLAIM, ITEM_CLAIM))
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_task_items SET claim_token = NULL WHERE task_id = ?",
             arrayOf(TASK_ID),
         )
@@ -180,7 +181,7 @@ class DataTaskIdentityDaoTest {
     @Test
     fun malformedPersistedPrivateSourceCannotBeReconstructedForAnotherTask() = runBlocking {
         dao.insertTask(newRestoreTask())
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             """
             UPDATE archive_task_details
             SET restore_source_kind = 'PRIVATE_COPY',
@@ -782,7 +783,7 @@ class DataTaskIdentityDaoTest {
     }
 
     private fun taskClaimLease(): Long? =
-        database.openHelper.readableDatabase.query(
+        database.getSupportWrapper().query(
             "SELECT claim_lease_expires_at_epoch_ms FROM data_tasks WHERE task_id = ?",
             arrayOf(TASK_ID),
         ).use { cursor ->
@@ -791,7 +792,7 @@ class DataTaskIdentityDaoTest {
         }
 
     private fun itemClaimLease(): Long? =
-        database.openHelper.readableDatabase.query(
+        database.getSupportWrapper().query(
             """
             SELECT claim_lease_expires_at_epoch_ms
             FROM data_task_items

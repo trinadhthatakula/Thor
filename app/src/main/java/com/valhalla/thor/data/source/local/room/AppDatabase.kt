@@ -3,12 +3,13 @@
 
 package com.valhalla.thor.data.source.local.room
 
-import androidx.room.AutoMigration
-import androidx.room.Database
-import androidx.room.RoomDatabase
-import androidx.room.TypeConverters
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.room3.AutoMigration
+import androidx.room3.Database
+import androidx.room3.RoomDatabase
+import androidx.room3.ColumnTypeConverters
+import androidx.room3.migration.Migration
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.async.executeSQL
 
 @Database(
     entities = [
@@ -44,7 +45,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     exportSchema = true,
 )
-@TypeConverters(AppTypeConverters::class)
+@ColumnTypeConverters(AppTypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
     abstract fun freezerDao(): FreezerDao
@@ -56,29 +57,29 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE apps ADD COLUMN isSuspended INTEGER NOT NULL DEFAULT 0")
+            override suspend fun migrate(connection: SQLiteConnection) {
+                connection.executeSQL("ALTER TABLE apps ADD COLUMN isSuspended INTEGER NOT NULL DEFAULT 0")
             }
         }
 
         val MIGRATION_8_9 = object : Migration(8, 9) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                createDataTaskTables(db)
-                migrateSweepTables(db)
+            override suspend fun migrate(connection: SQLiteConnection) {
+                createDataTaskTables(connection)
+                migrateSweepTables(connection)
             }
         }
 
         /** Old requests predate explicit-selection watchlist membership, so they retain false. */
         val MIGRATION_9_10 = object : Migration(9, 10) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
+            override suspend fun migrate(connection: SQLiteConnection) {
+                connection.executeSQL(
                     "ALTER TABLE sweep_requests ADD COLUMN add_to_freezer INTEGER NOT NULL DEFAULT 0",
                 )
             }
         }
 
-        internal fun createDataTaskTables(db: SupportSQLiteDatabase) {
-            db.execSQL(
+        internal suspend fun createDataTaskTables(connection: SQLiteConnection) {
+            connection.executeSQL(
                 """
                 CREATE TABLE IF NOT EXISTS `data_tasks` (
                     `task_id` TEXT NOT NULL,
@@ -108,11 +109,11 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE UNIQUE INDEX IF NOT EXISTS `index_data_tasks_queue_sequence` " +
                         "ON `data_tasks` (`queue_sequence`)",
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 CREATE TABLE IF NOT EXISTS `archive_task_details` (
                     `task_id` TEXT NOT NULL,
@@ -137,7 +138,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 CREATE TABLE IF NOT EXISTS `export_task_details` (
                     `task_id` TEXT NOT NULL,
@@ -153,7 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 CREATE TABLE IF NOT EXISTS `data_task_items` (
                     `task_id` TEXT NOT NULL,
@@ -174,15 +175,15 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE INDEX IF NOT EXISTS `index_data_task_items_task_id` " +
                         "ON `data_task_items` (`task_id`)",
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE INDEX IF NOT EXISTS `index_data_task_items_state` " +
                         "ON `data_task_items` (`state`)",
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 CREATE TABLE IF NOT EXISTS `data_task_outputs` (
                     `output_id` TEXT NOT NULL,
@@ -203,14 +204,14 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE INDEX IF NOT EXISTS `index_data_task_outputs_task_id_item_ordinal` " +
                         "ON `data_task_outputs` (`task_id`, `item_ordinal`)",
             )
         }
 
-        internal fun migrateSweepTables(db: SupportSQLiteDatabase) {
-            db.execSQL(
+        internal suspend fun migrateSweepTables(connection: SQLiteConnection) {
+            connection.executeSQL(
                 """
                 CREATE TABLE `sweep_requests_new` (
                     `request_id` TEXT NOT NULL,
@@ -245,7 +246,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 INSERT INTO `sweep_requests_new` (
                     request_id, work_id, operation, freezer_mode, user_id, source_surface,
@@ -296,7 +297,7 @@ abstract class AppDatabase : RoomDatabase() {
                 FROM sweep_requests AS old
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 CREATE TABLE `sweep_targets_new` (
                     `request_id` TEXT NOT NULL,
@@ -316,7 +317,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 INSERT INTO `sweep_targets_new` (
                     request_id, ordinal, package_name, state, claim_token,
@@ -328,7 +329,7 @@ abstract class AppDatabase : RoomDatabase() {
                 FROM sweep_targets
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 CREATE TABLE `sweep_request_sources_new` (
                     `request_id` TEXT NOT NULL,
@@ -340,7 +341,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 INSERT INTO `sweep_request_sources_new` (
                     request_id, source_surface, associated_at_epoch_ms
@@ -349,11 +350,11 @@ abstract class AppDatabase : RoomDatabase() {
                 FROM sweep_request_sources
                 """.trimIndent(),
             )
-            db.execSQL("DROP TABLE `sweep_request_sources`")
-            db.execSQL("DROP TABLE `sweep_targets`")
-            db.execSQL("DROP TABLE `sweep_requests`")
-            db.execSQL("ALTER TABLE `sweep_requests_new` RENAME TO `sweep_requests`")
-            db.execSQL(
+            connection.executeSQL("DROP TABLE `sweep_request_sources`")
+            connection.executeSQL("DROP TABLE `sweep_targets`")
+            connection.executeSQL("DROP TABLE `sweep_requests`")
+            connection.executeSQL("ALTER TABLE `sweep_requests_new` RENAME TO `sweep_requests`")
+            connection.executeSQL(
                 """
                 CREATE TABLE `sweep_targets` (
                     `request_id` TEXT NOT NULL,
@@ -373,7 +374,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 INSERT INTO `sweep_targets` (
                     request_id, ordinal, package_name, state, claim_token,
@@ -386,8 +387,8 @@ abstract class AppDatabase : RoomDatabase() {
                 FROM `sweep_targets_new`
                 """.trimIndent(),
             )
-            db.execSQL("DROP TABLE `sweep_targets_new`")
-            db.execSQL(
+            connection.executeSQL("DROP TABLE `sweep_targets_new`")
+            connection.executeSQL(
                 """
                 CREATE TABLE `sweep_request_sources` (
                     `request_id` TEXT NOT NULL,
@@ -399,7 +400,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent(),
             )
-            db.execSQL(
+            connection.executeSQL(
                 """
                 INSERT INTO `sweep_request_sources` (
                     request_id, source_surface, associated_at_epoch_ms
@@ -408,21 +409,21 @@ abstract class AppDatabase : RoomDatabase() {
                 FROM `sweep_request_sources_new`
                 """.trimIndent(),
             )
-            db.execSQL("DROP TABLE `sweep_request_sources_new`")
-            db.execSQL(
+            connection.executeSQL("DROP TABLE `sweep_request_sources_new`")
+            connection.executeSQL(
                 "CREATE UNIQUE INDEX `index_sweep_requests_work_id` ON `sweep_requests` (`work_id`)",
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE INDEX `index_sweep_requests_queue_sequence` " +
                         "ON `sweep_requests` (`queue_sequence`)",
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE INDEX `index_sweep_targets_request_id` ON `sweep_targets` (`request_id`)",
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE INDEX `index_sweep_targets_state` ON `sweep_targets` (`state`)",
             )
-            db.execSQL(
+            connection.executeSQL(
                 "CREATE INDEX `index_sweep_request_sources_request_id` " +
                         "ON `sweep_request_sources` (`request_id`)",
             )

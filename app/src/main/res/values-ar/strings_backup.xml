@@ -302,12 +302,9 @@
     <string name="backup_hub_hero_backup_desc">إنشاء نسخة احتياطية مشفرة (.thorbak) أو حزمة APK</string>
     <string name="backup_hub_hero_restore_title">استعادة من ملف</string>
     <string name="backup_hub_hero_restore_desc">تحديد أي أرشيف .thorbak أو حزمة من وحدة التخزين</string>
-    <string name="backup_hub_section_backups">النسخ الاحتياطية في Downloads/Thor</string>
     <string name="backup_hub_filter_all">الكل</string>
     <string name="backup_hub_filter_backups">النسخ الاحتياطية</string>
     <string name="backup_hub_filter_bundles">الحزم</string>
-    <string name="backup_hub_empty_title">لا توجد نسخ احتياطية في Downloads/Thor</string>
-    <string name="backup_hub_empty_desc">ستظهر الأرشيفات المحفوظة في Downloads/Thor هنا لاستعادتها بنقرة واحدة.</string>
     <string name="backup_hub_tip_thorbak_title">النسخ الاحتياطية للبيانات (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">أرشيفات كاملة مشفرة تحتوي على بيانات التطبيق وتجزئات APK اختيارية. تتطلب بيانات التطبيق الخاصة (CE/DE) صلاحيات الروت، بينما يمكن استعادة بيانات التخزين المشتركة عبر شل مميز.</string>
     <string name="backup_hub_tip_bundle_title">حزم التطبيقات (.xapk / .apks / .apk)</string>
@@ -322,5 +319,4 @@
     <string name="backup_hub_badge_app_bundle">حزمة تطبيق</string>
     <string name="backup_hub_action_delete">حذف</string>
     <string name="backup_hub_action_share">مشاركة</string>
-    <string name="backup_hub_no_archives">لم يتم العثور على أي أرشيف</string>
 </resources>

@@ -46,6 +46,7 @@
 ### Freezer and bulk actions
 
 - Root and Shizuku freeze by disabling; Dhizuku uses Android's device-owner hide/unhide API. These paths retain the APK and app data. Thor also helps recover system apps removed for the current user by older versions. Settings → Freezer offers a default-on Shizuku removal fallback when the device refuses disabling: it keeps data files but may affect accounts, and Unfreeze reinstalls the package. Turning the setting off is respected across app updates.
+- The **Freezer Quick Settings tile** toggles apps in the Freezer watchlist. It lights up when frozen apps are present and offers Unfreeze; otherwise it offers Freeze for eligible apps. Mixed lists unfreeze frozen apps first. Taps during running work reconnect to that task, and new actions check live app state.
 - Universal Android Debloater recommendations label system apps. Thor blocks **Unsafe** freeze targets and warns for **Expert** targets to reduce the risk of boot problems.
 - Freeze Profiles group apps for freeze/unfreeze, suspend, or force-stop actions. Assign selected apps to existing profiles from the App list or Freezer; App Info shows membership, and removing the last profile membership of a frozen app offers a recovery choice.
 - Batch reinstall, uninstall, freeze, unfreeze, force-stop, suspend, unsuspend, cache clearing, sharing, and APK/bundle export. Bulk Freeze asks whether successfully frozen apps should also be added to the Freezer list. **Batch clear data and batch install are not available.**
@@ -66,6 +67,7 @@
 - Nine app languages: English, Spanish, French, Arabic, Simplified Chinese, Japanese, European Portuguese, Brazilian Portuguese, and Polish, with an in-app language switcher.
 - Work Mode selection between available Root, Shizuku, and Dhizuku providers. The Extension Manager offers an optional catalog of add-ons, with a pinned-signer check for every downloaded APK and a SHA-256 comparison when the catalog provides a digest, both before installation.
 - The Privilege Check bottom sheet recognizes ReSukiSU and SukiSU Ultra, including renamed builds that retain their known launcher activities. For other hidden managers, choose the installed app as a shortcut saved on this device. Root access is checked independently of manager discovery or selection.
+- **Kernel flasher** in Extensions imports AnyKernel3 ZIPs in both FOSS and Store builds. Opening, sharing, or choosing an AnyKernel3 ZIP through Home’s **Install from File** switches the portable installer to **Bolt** after confirming root access; APKs and app bundles keep the existing installer UI without requiring root. Flashing requires root and an existing Magisk, KernelSU or APatch BusyBox, checks the archive, and offers current, inactive or both slot requests for supported A/B packages. Both slots requires an additional warning acknowledgement. Installer output appears in Thor’s shared terminal logger. Only use trusted packages for your exact device; a successful installer exit does not prove the device will boot. See the [requirements, Play policy assessment and pending device checks](docs/kernel-flasher.md).
 
 ## Upcoming Features
 

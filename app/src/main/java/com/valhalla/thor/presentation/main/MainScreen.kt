@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -1010,7 +1011,8 @@ fun MainScreen(
                             onBrowse = {
                                 currentBackStack.add(ThorRoute.ExtensionBrowse)
                             },
-                            onSettingsEditor = { currentBackStack.add(ThorRoute.SettingsEditor) }
+                            onSettingsEditor = { currentBackStack.add(ThorRoute.SettingsEditor) },
+                            onKernelFlasher = { currentBackStack.add(ThorRoute.KernelFlasher) },
                         )
                     }
 
@@ -1018,6 +1020,18 @@ fun MainScreen(
                         com.valhalla.thor.presentation.settingseditor.SettingsEditorScreen(onBack = {
                             if (currentBackStack.size > 1) currentBackStack.removeLastOrNull()
                         })
+                    }
+
+                    entry<ThorRoute.KernelFlasher>(metadata = ListDetailSceneStrategy.detailPane()) {
+                        com.valhalla.thor.presentation.kernel.KernelFlasherScreen(
+                            onBack = {
+                                if (currentBackStack.size > 1) currentBackStack.removeLastOrNull()
+                            },
+                            // MainScreen already applies this padding to NavDisplay. Let the
+                            // flasher handle only the system insets that remain (including its
+                            // navigation bar while the main bottom bar is hidden).
+                            modifier = Modifier.consumeWindowInsets(innerPadding),
+                        )
                     }
 
                     entry<ThorRoute.ExtensionBrowse>(

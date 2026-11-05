@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.valhalla.thor.presentation.widgets.ThorTooltip
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BulkOp
@@ -325,27 +326,31 @@ private fun FreezeProfileRow(
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
             } else {
-                IconButton(
-                    // No mode: the button says "freeze", and what freezing means is the user's
-                    // standing choice. Only the explicit Suspend below overrides it.
-                    onClick = { onRun(BulkOp.FREEZE, null) },
-                    enabled = hasPrivilege && profile.size > 0 && !isWorking
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.frozen),
-                        contentDescription = stringResource(R.string.action_freeze),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                ThorTooltip(stringResource(R.string.action_freeze)) {
+                    IconButton(
+                        // No mode: the button says "freeze", and what freezing means is the user's
+                        // standing choice. Only the explicit Suspend below overrides it.
+                        onClick = { onRun(BulkOp.FREEZE, null) },
+                        enabled = hasPrivilege && profile.size > 0 && !isWorking
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.frozen),
+                            contentDescription = stringResource(R.string.action_freeze),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
-                IconButton(
-                    onClick = { onRun(BulkOp.UNFREEZE, null) },
-                    enabled = hasPrivilege && profile.size > 0 && !isWorking
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.unfreeze),
-                        contentDescription = stringResource(R.string.action_unfreeze),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                ThorTooltip(stringResource(R.string.action_unfreeze)) {
+                    IconButton(
+                        onClick = { onRun(BulkOp.UNFREEZE, null) },
+                        enabled = hasPrivilege && profile.size > 0 && !isWorking
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.unfreeze),
+                            contentDescription = stringResource(R.string.action_unfreeze),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 

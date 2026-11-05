@@ -12,12 +12,13 @@ import com.valhalla.thor.domain.model.PrivilegeSweepStatus
  * What the QS tile should show. Deliberately framework-free — [tileStateFor] maps these onto
  * `Tile.STATE_*` so the decision itself stays a plain JVM unit under test.
  */
-enum class TileVisual { CHECKING, NO_PRIVILEGE, NOTHING_TO_FREEZE, READY, WORKING }
+enum class TileVisual { CHECKING, NO_PRIVILEGE, NOTHING_TO_FREEZE, READY, READY_TO_UNFREEZE, WORKING }
 
 /**
  * Resolve the tile's visual state.
  *
- * [freezableCount] is null until the first PackageManager sweep lands.
+ * The counts are null until the live candidate snapshot lands. Frozen apps take precedence
+ * over active ones, so mixed lists offer recovery instead of retrying a partially failed freeze.
  *
  * The ordering matters. CHECKING must win over NO_PRIVILEGE while the privilege probe is
  * still in flight: AOSP's `CustomTile.handleClick()` early-returns on `STATE_UNAVAILABLE`,
@@ -29,11 +30,13 @@ fun tileVisualFor(
     privilege: PrivilegeState,
     freezableCount: Int?,
     status: PrivilegeSweepStatus?,
+    unfreezeCount: Int? = 0,
 ): TileVisual = tileVisualFor(
     privilege = privilege,
     freezableCount = freezableCount,
     isRunning = status?.phase == PrivilegeSweepPhase.QUEUED ||
         status?.phase == PrivilegeSweepPhase.RUNNING,
+    unfreezeCount = unfreezeCount,
 )
 
 fun retainedProcessedCount(status: PrivilegeSweepStatus?): Int? = status?.let {
@@ -44,11 +47,13 @@ fun tileVisualFor(
     privilege: PrivilegeState,
     freezableCount: Int?,
     isRunning: Boolean,
+    unfreezeCount: Int? = 0,
 ): TileVisual = when {
     !privilege.isReady -> TileVisual.CHECKING
     !privilege.hasAnyPrivilege -> TileVisual.NO_PRIVILEGE
     isRunning -> TileVisual.WORKING
-    freezableCount == null -> TileVisual.CHECKING
+    freezableCount == null || unfreezeCount == null -> TileVisual.CHECKING
+    unfreezeCount > 0 -> TileVisual.READY_TO_UNFREEZE
     freezableCount == 0 -> TileVisual.NOTHING_TO_FREEZE
     else -> TileVisual.READY
 }
@@ -72,5 +77,7 @@ fun tileStateFor(visual: TileVisual): Int = when (visual) {
     TileVisual.NOTHING_TO_FREEZE -> Tile.STATE_INACTIVE
     TileVisual.CHECKING -> Tile.STATE_INACTIVE
     TileVisual.WORKING -> Tile.STATE_ACTIVE
-    TileVisual.READY -> Tile.STATE_ACTIVE
+    // Lit means frozen apps exist; the subtitle describes the next action.
+    TileVisual.READY -> Tile.STATE_INACTIVE
+    TileVisual.READY_TO_UNFREEZE -> Tile.STATE_ACTIVE
 }

@@ -24,7 +24,7 @@ kotlin {
     }
 }
 
-room {
+room3 {
     schemaDirectory("$projectDir/schemas")
 }
 
@@ -469,6 +469,9 @@ dependencies {
     // Room's MigrationTestHelper. androidTest only: it opens a real SQLite file at an old schema
     // version and runs the generated migrations against it, which no JVM stub of SQLite can do.
     androidTestImplementation(libs.room.testing)
+    // Existing SQL fixtures use Room's driver-backed wrapper; excluded from app runtime artifacts.
+    testImplementation(libs.room.sqlite.wrapper)
+    androidTestImplementation(libs.room.sqlite.wrapper)
     androidTestImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -503,6 +506,8 @@ dependencies {
     implementation(libs.androidx.adaptive.navigation3)
 
     implementation(libs.room.runtime)
+    implementation(libs.sqlite.async)
+    implementation(libs.sqlite.framework)
     ksp(libs.room.compiler)
 
     // Store-only dependencies

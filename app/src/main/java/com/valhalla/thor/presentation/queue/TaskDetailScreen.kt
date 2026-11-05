@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -100,6 +101,7 @@ internal fun TaskDetailContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .safeDrawingPadding()
                 .testTag(TASK_DETAIL_SCRIM_TAG)
                 .pointerInput(onBackground) {
                     detectTapGestures { onBackground() }
@@ -137,6 +139,7 @@ internal fun TaskDetailContent(
                 dismissOnBackPress = true,
                 dismissOnClickOutside = true,
                 usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
             ),
             content = content,
         )
@@ -315,7 +318,10 @@ private fun TaskLogLine.displayText(): UiText? {
 
         "TASK_ITEM_SUCCEEDED",
         "SWEEP_TARGET_SUCCEEDED",
-            -> target?.let { UiText.StringResource(R.string.task_log_item_succeeded, it) }
+            -> target?.let {
+                UiText.StringResource(if (arguments.getOrNull(1) == "EXTERNAL_SUSPENSION_REMAINS")
+                    R.string.thaw_external_pause_generic else R.string.task_log_item_succeeded, it)
+            }
 
         "TASK_ITEM_FAILED",
         "SWEEP_TARGET_FAILED",
@@ -325,6 +331,10 @@ private fun TaskLogLine.displayText(): UiText? {
                     "SYSTEM_APP_DISABLE_REFUSED" -> R.string.freeze_system_app_disable_refused
                     "SYSTEM_APP_DISABLE_FAILED" -> R.string.freeze_system_app_disable_failed
                     "SYSTEM_APP_RESTORE_FAILED" -> R.string.unfreeze_system_app_failed
+                    "SUSPENSION_OWNERSHIP_UNKNOWN" -> R.string.suspension_ownership_unknown
+                    "SUSPEND_INDEPENDENT_UNAVAILABLE" -> R.string.suspend_independent_unavailable
+                    "SUSPEND_WRONG_PRIVILEGE" -> R.string.suspend_wrong_privilege
+                    "SUSPENSION_NOT_VERIFIED" -> R.string.suspension_change_unverified
                     else -> R.string.task_log_item_failed
                 }
                 UiText.StringResource(resource, it)

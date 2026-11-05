@@ -4,7 +4,7 @@
 package com.valhalla.thor.data.repository
 
 import android.app.Application
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.freezer.isPrivilegeServiceExecutionId
 import com.valhalla.thor.data.freezer.newPrivilegeServiceExecutionId

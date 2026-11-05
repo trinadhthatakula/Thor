@@ -8,13 +8,14 @@ import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,13 +33,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -59,7 +62,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,8 +82,11 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.SubcomposeAsyncImage
+import com.valhalla.thor.presentation.widgets.ThorTooltip
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.repository.ArchiveDeleteFailure
+import com.valhalla.thor.domain.repository.BackupArchiveSourceKind
 import com.valhalla.thor.domain.repository.BackupArchiveItem
 import com.valhalla.thor.domain.repository.BackupArchiveKind
 import com.valhalla.thor.presentation.home.components.BentoTile
@@ -114,13 +119,19 @@ fun BackupRestoreHubScreen(
     val context = LocalContext.current
     var showInstallerSheet by remember { mutableStateOf(false) }
 
-    // The row does not disappear when a delete is refused, so something has to say why it did not.
-    LaunchedEffect(state.deleteFailed) {
-        if (state.deleteFailed) {
-            Toast.makeText(context, R.string.unknown_error_occurred, Toast.LENGTH_SHORT).show()
-            viewModel.consumeDeleteFailure()
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+                viewModel.reconnectFolder(uri.toString())
+            } catch (_: Exception) {
+                viewModel.reportFolderSelectionFailure()
+            }
         }
     }
+    val chooseFolder = { folderPicker.launch(null) }
 
     val handleRestoreOrInstall = { item: BackupArchiveItem ->
         if (item.kind == BackupArchiveKind.DATA_BACKUP) {
@@ -185,112 +196,157 @@ fun BackupRestoreHubScreen(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
+                .consumeWindowInsets(innerPadding).imePadding(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Spacer(Modifier.height(4.dp))
-
-            // 1. HERO ACTION CARDS
-            HeroActionCards(
-                onBackupClick = { viewModel.showAppPicker() },
-                onRestoreClick = { safFilePickerLauncher.launch(arrayOf("*/*")) },
-            )
-
-            // 2. BACKUPS SECTION HEADER
-            BackupsSectionHeader(
-                totalCount = state.archives.size,
-                totalSizeBytes = state.totalSizeBytes,
-            )
-
-            // 3. DYNAMIC FILTER CHIPS (Visible only when both kinds are present)
-            if (state.showFilterChips) {
-                DynamicFilterChips(
-                    activeFilter = state.activeFilter,
-                    onFilterSelect = { viewModel.setFilter(it) },
+            item(key = "actions") {
+                HeroActionCards(
+                    onBackupClick = viewModel::showAppPicker,
+                    onRestoreClick = { safFilePickerLauncher.launch(arrayOf("*/*")) },
                 )
             }
-
-            // 4. ARCHIVES LIST OR EMPTY STATE
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                }
-            } else if (state.archives.isEmpty()) {
-                EmptyStateKnowledgeCards()
-            } else {
-                val itemsToRender = state.filteredArchives
-                if (itemsToRender.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.backup_hub_no_archives),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
+            item(key = "header") {
+                BackupsSectionHeader(totalCount = state.archives.size, totalSizeBytes = state.totalSizeBytes)
+            }
+            item(key = "archive_search") {
+                var sortExpanded by remember { mutableStateOf(false) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = state.archiveQuery,
+                        onValueChange = viewModel::setArchiveQuery,
+                        label = { Text(stringResource(R.string.backup_hub_search_archives)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            if (state.archiveQuery.isNotEmpty()) IconButton(onClick = { viewModel.setArchiveQuery("") }) {
+                                Icon(painterResource(R.drawable.round_close), stringResource(R.string.cd_clear))
+                            }
+                        },
                     )
-                } else {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.animateContentSize(),
-                    ) {
-                        itemsToRender.forEach { item ->
-                            ArchiveItemCard(
-                                item = item,
-                                onRestore = { handleRestoreOrInstall(item) },
-                                onShare = {
-                                    val parsedUri = item.uriString.toUri()
-                                    val shareUri =
-                                        if (parsedUri.scheme == "file" && parsedUri.path != null) {
-                                            try {
-                                                FileProvider.getUriForFile(
-                                                    context,
-                                                    "${context.packageName}.provider",
-                                                    File(parsedUri.path!!)
-                                                )
-                                            } catch (e: Exception) {
-                                                Logger.e(
-                                                    "BackupRestoreHub",
-                                                    "Failed to get share URI for file",
-                                                    e
-                                                )
-                                                Toast.makeText(
-                                                    context,
-                                                    R.string.unknown_error_occurred,
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                                null
-                                            }
-                                        } else {
-                                            parsedUri
-                                        } ?: return@ArchiveItemCard
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "*/*"
-                                        putExtra(Intent.EXTRA_STREAM, shareUri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(
-                                        Intent.createChooser(
-                                            shareIntent,
-                                            item.displayName
-                                        )
-                                    )
-                                },
-                                onDelete = { viewModel.requestDeleteArchive(item) },
-                            )
+                    Box {
+                        OutlinedButton(onClick = { sortExpanded = true }) {
+                            Text(stringResource(R.string.sort_by) + ": " + stringResource(
+                                if (state.archiveSort == BackupArchiveSort.NEWEST) R.string.backup_hub_newest else R.string.sort_by_name,
+                            ))
+                        }
+                        DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                            BackupArchiveSort.entries.forEach { sort ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(if (sort == BackupArchiveSort.NEWEST) R.string.backup_hub_newest else R.string.sort_by_name)) },
+                                    onClick = { viewModel.setArchiveSort(sort); sortExpanded = false },
+                                )
+                            }
                         }
                     }
                 }
             }
-
-            Spacer(Modifier.height(32.dp))
+            if (state.showFilterChips) item(key = "filters") {
+                DynamicFilterChips(activeFilter = state.activeFilter, onFilterSelect = viewModel::setFilter)
+            }
+            if (state.isLoading) item(key = "loading") {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (state.scanFailed || state.folderSelectionFailed) item(key = "scan_error") {
+                ArchiveRecoveryCard(
+                    message = stringResource(if (state.folderSelectionFailed) R.string.backup_hub_folder_failed else R.string.backup_hub_scan_failed),
+                    actionLabel = stringResource(if (state.folderSelectionFailed) R.string.backup_hub_choose_folder else R.string.refresh),
+                    onAction = if (state.folderSelectionFailed) chooseFolder else viewModel::refreshArchives,
+                )
+            }
+            items(state.unavailableSources, key = { "source_${it.kind}" }) { source ->
+                val custom = source.kind == BackupArchiveSourceKind.CUSTOM_FOLDER
+                val location = if (custom) {
+                    source.uriString?.toUri()?.lastPathSegment ?: stringResource(R.string.backup_hub_custom_folder)
+                } else "Downloads/Thor"
+                ArchiveRecoveryCard(
+                    message = stringResource(R.string.backup_hub_source_unavailable, location),
+                    actionLabel = stringResource(if (custom) R.string.backup_hub_choose_folder else R.string.refresh),
+                    onAction = if (custom) chooseFolder else viewModel::refreshArchives,
+                    supportingText = if (custom) stringResource(R.string.backup_hub_folder_hint) else null,
+                )
+            }
+            state.deletionIssue?.let { issue ->
+                item(key = "delete_error") {
+                    ArchiveRecoveryCard(
+                        message = stringResource(R.string.backup_hub_delete_failed, issue.archive.displayName),
+                        supportingText = stringResource(when (issue.reason) {
+                            ArchiveDeleteFailure.ACCESS_DENIED -> R.string.backup_hub_delete_access
+                            ArchiveDeleteFailure.READ_ONLY -> R.string.backup_hub_delete_read_only
+                            ArchiveDeleteFailure.NOT_FOUND -> R.string.backup_hub_delete_missing
+                            ArchiveDeleteFailure.UNAVAILABLE -> R.string.backup_hub_delete_unavailable
+                        }),
+                        actionLabel = stringResource(if (issue.reason == ArchiveDeleteFailure.NOT_FOUND) R.string.refresh else R.string.retry_label),
+                        onAction = {
+                            if (issue.reason == ArchiveDeleteFailure.NOT_FOUND) {
+                                viewModel.dismissDeletionIssue(); viewModel.refreshArchives()
+                            } else viewModel.requestDeleteArchive(issue.archive)
+                        },
+                        onDismiss = viewModel::dismissDeletionIssue,
+                    )
+                }
+            }
+            val archives = state.filteredArchives
+            if (!state.isLoading && state.archives.isEmpty() &&
+                state.unavailableSources.isEmpty() && !state.scanFailed && !state.folderSelectionFailed) {
+                item(key = "empty") { EmptyStateKnowledgeCards() }
+            } else if (!state.isLoading && state.archives.isNotEmpty() && archives.isEmpty()) {
+                item(key = "no_matches") {
+                    Column {
+                        Text(stringResource(R.string.backup_hub_no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick = { viewModel.setArchiveQuery(""); viewModel.setFilter(BackupHubFilter.ALL) }) {
+                            Text(stringResource(R.string.cd_settings_search_clear))
+                        }
+                    }
+                }
+            }
+            items(archives, key = { it.uriString }) { item ->
+                ArchiveItemCard(
+                    item = item,
+                    onRestore = { handleRestoreOrInstall(item) },
+                    onShare = {
+                        val parsedUri = item.uriString.toUri()
+                        val shareUri =
+                            if (parsedUri.scheme == "file" && parsedUri.path != null) {
+                                try {
+                                    FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.provider",
+                                        File(parsedUri.path!!)
+                                    )
+                                } catch (e: Exception) {
+                                    Logger.e(
+                                        "BackupRestoreHub",
+                                        "Failed to get share URI for file",
+                                        e
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        R.string.unknown_error_occurred,
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    null
+                                }
+                            } else {
+                                parsedUri
+                            } ?: return@ArchiveItemCard
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_STREAM, shareUri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(
+                                shareIntent,
+                                item.displayName
+                            )
+                        )
+                    },
+                    onDelete = { viewModel.requestDeleteArchive(item) },
+                )
+            }
         }
     }
 
@@ -397,7 +453,7 @@ private fun BackupsSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.backup_hub_section_backups),
+            text = stringResource(R.string.backup_hub_saved_archives),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -625,21 +681,25 @@ private fun ArchiveItemCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onShare, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            painter = painterResource(R.drawable.share),
-                            contentDescription = stringResource(R.string.backup_hub_action_share),
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    ThorTooltip(stringResource(R.string.backup_hub_action_share)) {
+                        IconButton(onClick = onShare, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                painter = painterResource(R.drawable.share),
+                                contentDescription = stringResource(R.string.backup_hub_action_share),
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            painter = painterResource(R.drawable.delete),
-                            contentDescription = stringResource(R.string.backup_hub_action_delete),
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.error,
-                        )
+                    ThorTooltip(stringResource(R.string.backup_hub_action_delete)) {
+                        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                painter = painterResource(R.drawable.delete),
+                                contentDescription = stringResource(R.string.backup_hub_action_delete),
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
 
@@ -706,13 +766,13 @@ private fun EmptyStateKnowledgeCards() {
                         modifier = Modifier.size(24.dp),
                     )
                     Text(
-                        text = stringResource(R.string.backup_hub_empty_title),
+                        text = stringResource(R.string.backup_hub_empty_saved_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
                 }
                 Text(
-                    text = stringResource(R.string.backup_hub_empty_desc),
+                    text = stringResource(R.string.backup_hub_empty_saved_desc),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -884,6 +944,28 @@ private fun AppPickerBottomSheet(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArchiveRecoveryCard(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    supportingText: String? = null,
+    onDismiss: (() -> Unit)? = null,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(message, style = MaterialTheme.typography.titleSmall)
+            supportingText?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onAction) { Text(actionLabel) }
+                onDismiss?.let { dismiss ->
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.dismiss)) }
                 }
             }
         }

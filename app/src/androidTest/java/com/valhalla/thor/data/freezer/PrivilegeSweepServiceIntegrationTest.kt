@@ -10,7 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.net.toUri
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.data.repository.RoomPrivilegeSweepStore

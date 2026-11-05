@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">اختيار مجلد</string>
+    <string name="backup_hub_custom_folder">مجلد مخصص</string>
+    <string name="backup_hub_delete_access">تم رفض الوصول إلى التخزين. استعد الوصول إلى المجلد ثم أعد المحاولة.</string>
+    <string name="backup_hub_delete_failed">تعذر حذف %1$s.</string>
+    <string name="backup_hub_delete_missing">تعذر العثور على الأرشيف. حدّث القائمة.</string>
+    <string name="backup_hub_delete_read_only">هذا الموقع للقراءة فقط.</string>
+    <string name="backup_hub_delete_unavailable">لم يُكمل موفر التخزين الحذف. تحقق من الموقع وأعد المحاولة.</string>
+    <string name="backup_hub_empty_saved_desc">أنشئ نسخة احتياطية أو صدّر تطبيقًا لعرضه هنا.</string>
+    <string name="backup_hub_empty_saved_title">لا توجد أرشيفات محفوظة</string>
+    <string name="backup_hub_folder_failed">تعذر حفظ إذن الوصول إلى هذا المجلد. اختر المجلد مجددًا.</string>
+    <string name="backup_hub_folder_hint">يحدد هذا المجلد المستخدم للتصدير والأرشيفات المحفوظة.</string>
+    <string name="backup_hub_newest">الأحدث أولًا</string>
+    <string name="backup_hub_no_matches">لا توجد أرشيفات تطابق البحث أو الفلتر.</string>
+    <string name="backup_hub_saved_archives">الأرشيفات المحفوظة</string>
+    <string name="backup_hub_scan_failed">تعذر تحديث الأرشيفات المحفوظة. أعد المحاولة.</string>
+    <string name="backup_hub_search_archives">البحث في الأرشيفات المحفوظة</string>
+    <string name="backup_hub_source_unavailable">تعذرت قراءة %1$s بالكامل. قد لا تظهر بعض الأرشيفات في هذه القائمة.</string>
+    <string name="installer_app_lock">توسيع قفل التطبيق ليشمل المثبّت</string>
+    <string name="installer_app_lock_desc">طلب المصادقة أيضًا للمثبّت المحمول وBolt، وحماية لقطات الشاشة ومعاينات التطبيقات الأخيرة. يتطلب قفل التطبيق.</string>
+    <string name="installer_lock_include">تضمين المثبّت</string>
+    <string name="installer_lock_main_only">التطبيق الرئيسي فقط</string>
+    <string name="installer_lock_not_saved">تعذر حفظ إعداد قفل المثبّت. أعد المحاولة.</string>
+    <string name="installer_lock_prompt_desc">هل تريد طلب المصادقة أيضًا عند فتح المثبّت المحمول أو Bolt؟ يحمي هذا لقطات الشاشة ومعاينات التطبيقات الأخيرة أيضًا. يمكنك تغيير ذلك لاحقًا في إعدادات الأمان.</string>
+    <string name="installer_lock_prompt_title">هل تريد تضمين المثبّت في قفل التطبيق؟</string>
+    <string name="kernel_refresh_root">تحديث صلاحية الروت</string>
+    <string name="log_jump_latest">الانتقال إلى الأحدث</string>
+    <string name="log_jump_latest_new_output">مخرجات جديدة · الانتقال إلى الأحدث</string>
+</resources>

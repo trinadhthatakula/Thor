@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">Installation de noyaux</string>
+    <string name="kernel_description">Installez un noyau au format ZIP AnyKernel3 avec les droits root.</string>
+    <string name="kernel_requirements">Nécessite les droits root et une version fonctionnelle de BusyBox fournie par Magisk, KernelSU ou APatch. Les autres formats ZIP et les images de démarrage ne sont pas pris en charge.</string>
+    <string name="kernel_warning">Installez uniquement un paquet provenant d’une source fiable, conçu pour votre modèle d’appareil et votre ROM exacts. Ses scripts et outils natifs s’exécutent avec les droits root et peuvent modifier les partitions de démarrage, les données et la sécurité de l’appareil. Une installation incompatible ou interrompue peut empêcher Android de démarrer. Conservez une image de démarrage dont le fonctionnement est confirmé et un moyen de la restaurer en dehors de Thor.</string>
+    <string name="kernel_choose">Choisir un ZIP AnyKernel3</string>
+    <string name="kernel_flash">Installer le noyau</string>
+    <string name="kernel_confirm_title">Installer ce noyau ?</string>
+    <string name="kernel_acknowledge">Je fais confiance à ce paquet, j’ai vérifié sa compatibilité avec mon appareil et je dispose d’une méthode de récupération.</string>
+    <string name="kernel_confirmation">L’installation ne peut pas être annulée une fois lancée. La validation du ZIP vérifie le format, pas la compatibilité ni la sécurité. Thor ne redémarrera pas l’appareil, ne relancera pas l’installation et ne restaurera pas le noyau précédent automatiquement.</string>
+    <string name="kernel_root_required">Accordez les droits root à Thor pour sélectionner et installer un noyau.</string>
+    <string name="kernel_preparing">Vérification du ZIP…</string>
+    <string name="kernel_starting">Préparation du programme d’installation avec les droits root…</string>
+    <string name="kernel_running">Installation du noyau. N’éteignez pas l’appareil et ne forcez pas l’arrêt de Thor.</string>
+    <string name="kernel_success">Le programme d’installation s’est terminé avec succès. La compatibilité au démarrage n’a pas été vérifiée. Consultez le journal avant de redémarrer.</string>
+    <string name="kernel_failed">L’opération a échoué. Consultez les détails ci-dessous.</string>
+    <string name="kernel_unknown">Le résultat de l’installation est inconnu. Elle est peut-être toujours en cours ou a pu modifier partiellement l’appareil. Ne lancez pas une autre installation. Consultez le journal et votre procédure de récupération.</string>
+    <string name="kernel_boot_lock">Une autre installation est bloquée jusqu’à la détection d’un nouveau démarrage de l’appareil. Redémarrer après un échec d’installation peut nécessiter une récupération avec des outils externes.</string>
+    <string name="kernel_save_log">Enregistrer le journal</string>
+    <string name="kernel_reboot">Redémarrer l’appareil</string>
+    <string name="kernel_reboot_confirm">Redémarrer l’appareil maintenant ?</string>
+    <string name="kernel_service_blocked">Activez le canal de notifications de l’installation de noyaux et réessayez en gardant Thor ouvert.</string>
+    <string name="kernel_hash">SHA-256 : %1$s</string>
+    <string name="kernel_open">Ouvrir l’installation de noyaux</string>
+    <string name="kernel_package_heading">1. Paquet du noyau</string>
+    <string name="kernel_slot_heading">2. Emplacement cible</string>
+    <string name="kernel_change_package">Changer de ZIP</string>
+    <string name="kernel_package_details">Détails du paquet</string>
+    <string name="kernel_slot_default">Choix du paquet</string>
+    <string name="kernel_slot_current">Emplacement actuel (%1$s)</string>
+    <string name="kernel_slot_inactive">Emplacement inactif (%1$s)</string>
+    <string name="kernel_slot_description">Le paquet gère le choix de l’emplacement. Utilisez uniquement un ZIP conçu pour cet appareil.</string>
+    <string name="kernel_slot_unknown">L’emplacement actuel n’a pas pu être identifié. Le paquet choisira sa cible.</string>
+    <string name="kernel_slot_unsupported">Ce paquet ne déclare pas la sélection standard d’emplacement AnyKernel3. Utilisez sa cible par défaut.</string>
+    <string name="kernel_single_slot">Cet appareil ne signale pas d’emplacements A/B. Le paquet choisira sa cible.</string>
+    <string name="kernel_inactive_warning">Utilisez l’emplacement inactif uniquement s’il contient un système compatible. Thor ne change pas l’emplacement du prochain démarrage.</string>
+    <string name="kernel_before_flash">Avant de flasher</string>
+    <string name="kernel_safety_summary">Utilisez un ZIP fiable pour votre modèle exact et conservez une image de récupération. Une confirmation sera demandée avant le flash.</string>
+    <string name="kernel_slot_both">Les deux slots (A + B)</string>
+    <string name="kernel_both_warning">Exécute tout le programme d’installation deux fois : slot actuel, puis inactif. Utilisez uniquement un paquet dont l’auteur prend en charge les installations répétées sur les deux systèmes installés. Cela peut remplacer les deux noyaux, supprimer le recours intact et répéter les modifications communes. Un échec peut laisser un seul slot à jour. Thor ne peut ni annuler les modifications ni changer le slot du prochain démarrage.</string>
+    <string name="kernel_both_acknowledge">Je comprends que les deux slots peuvent être modifiés et que ce paquet prend en charge les deux systèmes installés et les installations répétées.</string>
+    <string name="kernel_both_partial">Au moins une exécution a réussi, mais les deux slots ne se sont pas terminés avec succès. Consultez chaque exécution dans le journal ; aucune modification n’a été annulée.</string>
+    <string name="kernel_shared_blocked">Une autre opération sur le noyau est active ou attend un nouveau démarrage. Ouvrez l’outil de flash du noyau dans Extensions pour la consulter avant de partager un autre ZIP.</string>
+</resources>

@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,10 +21,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,7 +48,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -152,7 +155,7 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
     // Keyed on `uriString`, not bare: the sheet stays composed across a change of archive delivered
     // from outside (a second `.thorbak` opened while it is up), and `open()` clears every field it
     // owns but cannot reach this one — the same defect the picker callback below documents.
-    var passphrase by remember(uriString) { mutableStateOf("") }
+    val passphraseState = remember(uriString) { TextFieldState() }
 
     LaunchedEffect(uriString) { uriString?.let(viewModel::open) }
 
@@ -173,7 +176,7 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
             // 210,000-iteration derivation to answer "wrong passphrase". Unconditional on purpose:
             // `open()` returns early for an unchanged URI, so re-picking the same file clears the
             // field too, which is the same "start this file again" the rest of that path means.
-            passphrase = ""
+            passphraseState.edit { replace(0, length, "") }
             viewModel.open(uri.toString())
         }
     }
@@ -204,8 +207,7 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
         RestoreSheetBody(
             state = state,
             viewModel = viewModel,
-            passphrase = passphrase,
-            onPassphraseChange = { passphrase = it },
+            passphraseState = passphraseState,
             // */* rather than THORBAK_MIME: providers report a .thorbak as octet-stream, zip or
             // nothing at all depending on which one is answering, and a narrow filter greys out the
             // file the user is looking straight at.
@@ -237,18 +239,19 @@ internal fun ArchiveRestoreSheet(uriString: String?, onDismiss: () -> Unit) {
 private fun RestoreSheetBody(
     state: ArchiveRestoreUiState,
     viewModel: ArchiveRestoreViewModel,
-    passphrase: String,
-    onPassphraseChange: (String) -> Unit,
+    passphraseState: TextFieldState,
     onPickFile: () -> Unit,
     onDismiss: () -> Unit,
     onSupport: (() -> Unit)? = null,
 ) {
+    val passphrase = passphraseState.text.toString()
     val successTimeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
         SUCCESS_LINGER_MS, containsIcons = false, containsText = true, containsControls = true,
     ) ?: SUCCESS_LINGER_MS
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
             .padding(bottom = 32.dp),
@@ -418,12 +421,10 @@ private fun RestoreSheetBody(
             // is correct today only because a refused restore cannot be running.
             if (state.refusal == null && !state.running) {
                 if (state.passphraseNeeded) {
-                    OutlinedTextField(
-                        value = passphrase,
-                        onValueChange = onPassphraseChange,
+                    OutlinedSecureTextField(
+                        state = passphraseState,
                         label = { Text(stringResource(R.string.backup_passphrase)) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
+                        textObfuscationMode = TextObfuscationMode.Hidden,
                         isError = state.passphraseError != null,
                         supportingText = state.passphraseError?.let { { Text(messageText(it)) } },
                         modifier = Modifier.fillMaxWidth()
@@ -435,7 +436,7 @@ private fun RestoreSheetBody(
                             // most this can do is stop holding a live reference to one — which is
                             // still the difference between a passphrase that survives until GC and
                             // one that survives until the sheet closes.
-                            onPassphraseChange("")
+                            passphraseState.edit { replace(0, length, "") }
                         },
                         // `!state.loading`: the derivation behind this button takes 210,000 PBKDF2
                         // iterations, and the view model refuses a second submission while one is in
@@ -543,12 +544,14 @@ private fun RestoreSheetBody(
 private fun RestoreRunning(state: ArchiveRestoreUiState, onBackground: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         val percent = state.progress?.percent
-        if (percent == null) {
+        if (state.queued) {
+            LinearProgressIndicator(progress = { 0f }, modifier = Modifier.fillMaxWidth())
+        } else if (percent == null) {
             // Indeterminate, never a determinate bar pinned at 0 — a bar at 0 % that is moving is a
             // different claim from one that has not started.
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
         } else {
-            LinearProgressIndicator(
+            LinearWavyProgressIndicator(
                 progress = { percent / 100f },
                 modifier = Modifier.fillMaxWidth()
             )

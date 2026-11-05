@@ -10,6 +10,8 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.restorePlanFor
+import com.valhalla.thor.domain.model.SuspensionChange
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.PackageOperationBarrier
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -83,57 +85,90 @@ class ManageAppUseCase(
         setAppDisabledUncoordinated(packageName, disabled, execution)
     }
 
+    /** Read-only check for recovery surfaces that must distinguish remaining external pauses. */
+    suspend fun isAppSuspendedByThor(packageName: String): Boolean? =
+        systemRepository.isAppSuspendedByThor(packageName)
+
     /** Ungated for the same reasons as [setAppDisabled]; see [FreezeAppUseCase]. */
     suspend fun setAppSuspended(
         packageName: String,
         suspended: Boolean,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
-    ): Result<Unit> = withPackageLease(packageName, freezeOwner(suspended), execution) {
+    ): Result<SuspensionChange> = withPackageLease(packageName, freezeOwner(suspended), execution) {
         setAppSuspendedUncoordinated(packageName, suspended, execution)
     }
 
-    /**
-     * Bring an app fully back to active: unsuspend if suspended AND enable if disabled
-     * (both, when both apply). Safely handles the mixed disabled+suspended state. GH#239.
-     */
+    /** Convert modes without an active window, and without lifting somebody else's suspension. */
+    suspend fun freezeForFreezer(
+        packageName: String,
+        mode: FreezerMode,
+        execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
+    ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.FREEZE, execution) {
+        freezeForFreezerUncoordinated(packageName, mode, execution)
+    }
+
+    internal suspend fun freezeForFreezerUncoordinated(
+        packageName: String,
+        mode: FreezerMode,
+        execution: PrivilegeExecutionContext,
+    ): Result<Unit> = when (mode) {
+        FreezerMode.FREEZE -> {
+            val disabled = setAppDisabledUncoordinated(packageName, true, execution)
+            if (disabled.isFailure) disabled
+            else {
+                // Disabling is the requested restriction. If ownership cannot be verified, keep
+                // the suspension and still track the successful freeze; never strand a disabled app
+                // off the watchlist merely because optional mode-conversion cleanup was refused.
+                val cleanup = setAppSuspendedUncoordinated(packageName, false, execution)
+                val failure = cleanup.exceptionOrNull()
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                Result.success(Unit)
+            }
+        }
+        FreezerMode.SUSPEND -> {
+            val suspended = setAppSuspendedUncoordinated(packageName, true, execution)
+            if (suspended.isFailure) Result.failure(requireNotNull(suspended.exceptionOrNull()))
+            else {
+                // The requested suspension is already verified. Keep it successful and tracked
+                // even if optional enable/unhide cleanup cannot finish the mode conversion.
+                val cleanup = setAppDisabledUncoordinated(packageName, false, execution)
+                val failure = cleanup.exceptionOrNull()
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                Result.success(Unit)
+            }
+        }
+    }
+
+    /** Clear disabled/hidden state first, even when ownership readback later refuses unsuspension. */
     suspend fun restoreApp(
         packageName: String,
         enabled: Boolean,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
-    ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.UNFREEZE, execution) {
+    ): Result<SuspensionChange> = withPackageLease(packageName, PackageOperationOwner.UNFREEZE, execution) {
         val plan = restorePlanFor(enabled, isSuspended)
-        if (plan.unsuspend) {
-            val unsuspend = setAppSuspendedUncoordinated(packageName, false, execution)
-            if (unsuspend.isFailure) return@withPackageLease unsuspend
+        if (plan.enable) {
+            val enabledResult = setAppDisabledUncoordinated(packageName, false, execution)
+            if (enabledResult.isFailure) return@withPackageLease Result.failure(requireNotNull(enabledResult.exceptionOrNull()))
         }
-        if (plan.enable) setAppDisabledUncoordinated(
-            packageName,
-            false,
-            execution
-        ) else Result.success(Unit)
+        if (plan.unsuspend) setAppSuspendedUncoordinated(packageName, false, execution)
+        else Result.success(SuspensionChange())
     }
 
-    /**
-     * Force an app fully back to active for bulk "unfreeze all" when per-app state isn't known:
-     * unsuspend then enable, unconditionally. Unsuspending a non-suspended app and enabling an
-     * already-enabled app are no-ops, so this restores disabled AND suspended apps alike without a
-     * prior state query. GH#239.
-     */
     suspend fun forceUnfreeze(
         packageName: String,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
-    ): Result<Unit> = withPackageLease(packageName, PackageOperationOwner.UNFREEZE, execution) {
+    ): Result<SuspensionChange> = withPackageLease(packageName, PackageOperationOwner.UNFREEZE, execution) {
         forceUnfreezeUncoordinated(packageName, execution)
     }
 
     internal suspend fun forceUnfreezeUncoordinated(
         packageName: String,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        val unsuspend = setAppSuspendedUncoordinated(packageName, false, execution)
-        if (unsuspend.isFailure) return unsuspend
-        return setAppDisabledUncoordinated(packageName, false, execution)
+    ): Result<SuspensionChange> {
+        val enabled = setAppDisabledUncoordinated(packageName, false, execution)
+        if (enabled.isFailure) return Result.failure(requireNotNull(enabled.exceptionOrNull()))
+        return setAppSuspendedUncoordinated(packageName, false, execution)
     }
 
     suspend fun uninstallApp(
@@ -170,7 +205,7 @@ class ManageAppUseCase(
         packageName: String,
         suspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> = systemRepository.setAppSuspended(packageName, suspended, execution)
+    ): Result<SuspensionChange> = systemRepository.setAppSuspended(packageName, suspended, execution)
 
     internal suspend fun <T> withPackageOperation(
         packageName: String,

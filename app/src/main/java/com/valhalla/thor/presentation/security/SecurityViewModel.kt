@@ -160,6 +160,29 @@ class SecurityViewModel(
         AuthState.Loading
     )
 
+    /** Read both lock preferences together so a scope change cannot observe stale main-lock state. */
+    val installerAuthState: StateFlow<AuthState> = combine(
+        preferenceRepository.userPreferences
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null),
+        _isSessionAuthenticated,
+        _canAuthenticate,
+        _authError,
+    ) { preferences, authenticated, capable, error ->
+        // Follow the main lock's recovery policy when unreadable settings cannot tell us its scope.
+        val required = preferences?.let {
+            (it.biometricLockEnabled && it.installerAppLockEnabled) || (it.settingsLost && capable)
+        }
+        when {
+            required == null -> AuthState.Loading
+            !required -> AuthState.NotRequired
+            authenticated -> AuthState.Unlocked
+            !capable && !enrolmentCanFix -> AuthState.NotRequired
+            !capable -> AuthState.Unavailable
+            error != null -> AuthState.Error(error)
+            else -> AuthState.Locked
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, AuthState.Loading)
+
     init {
         // Disarm a lock this device can never open. This is the mirror of the guard in
         // `SettingsViewModel.setBiometricLock`: a lock Thor refuses to let the user switch **on** is

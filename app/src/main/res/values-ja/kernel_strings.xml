@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">カーネル書き込み</string>
+    <string name="kernel_description">root 権限で AnyKernel3 形式のカーネル ZIP を書き込みます。</string>
+    <string name="kernel_requirements">root 権限と、Magisk、KernelSU、APatch のいずれかが提供する動作可能な BusyBox が必要です。他の ZIP 形式やブートイメージには対応していません。</string>
+    <string name="kernel_warning">信頼できる提供元から入手した、お使いのデバイスと ROM に正確に対応するパッケージのみを書き込んでください。パッケージ内のスクリプトとネイティブツールは root 権限で実行され、ブートパーティション、データ、デバイスのセキュリティを変更できます。非互換のパッケージを書き込んだり、書き込みが中断されたりすると、Android が起動できなくなる場合があります。動作確認済みのブートイメージと、Thor を使わずに復元する手段を用意してください。</string>
+    <string name="kernel_choose">AnyKernel3 ZIP を選択</string>
+    <string name="kernel_flash">カーネルを書き込む</string>
+    <string name="kernel_confirm_title">このカーネルを書き込みますか？</string>
+    <string name="kernel_acknowledge">このパッケージを信頼し、デバイスとの互換性を確認済みで、復旧手段を用意しています。</string>
+    <string name="kernel_confirmation">書き込みは開始後にキャンセルできません。ZIP の検証では形式のみを確認し、互換性や安全性は確認しません。Thor は自動で再起動、再試行、以前のカーネルの復元を行いません。</string>
+    <string name="kernel_root_required">カーネルを選択して書き込むには、Thor に root 権限を付与してください。</string>
+    <string name="kernel_preparing">ZIP を確認中…</string>
+    <string name="kernel_starting">root 権限でインストーラーを準備中…</string>
+    <string name="kernel_running">カーネルを書き込み中です。電源を切ったり、Thor を強制停止したりしないでください。</string>
+    <string name="kernel_success">インストーラーは正常に終了しました。起動時の互換性は未確認です。再起動する前にログを確認してください。</string>
+    <string name="kernel_failed">操作に失敗しました。以下の詳細を確認してください。</string>
+    <string name="kernel_unknown">インストーラーの結果は不明です。まだ実行中か、デバイスを部分的に変更した可能性があります。別の書き込みを開始しないでください。ログと復旧手順を確認してください。</string>
+    <string name="kernel_boot_lock">デバイスの新たな起動が検出されるまで、次の書き込みはできません。書き込み失敗後の再起動では、外部ツールによる復旧が必要になる場合があります。</string>
+    <string name="kernel_save_log">ログを保存</string>
+    <string name="kernel_reboot">デバイスを再起動</string>
+    <string name="kernel_reboot_confirm">端末を今すぐ再起動しますか？</string>
+    <string name="kernel_service_blocked">カーネル書き込みの通知チャンネルを有効にし、Thor を開いた状態で再試行してください。</string>
+    <string name="kernel_hash">SHA-256: %1$s</string>
+    <string name="kernel_open">カーネル書き込みを開く</string>
+    <string name="kernel_package_heading">1. カーネルパッケージ</string>
+    <string name="kernel_slot_heading">2. 書き込み先スロット</string>
+    <string name="kernel_change_package">ZIPを変更</string>
+    <string name="kernel_package_details">パッケージの詳細</string>
+    <string name="kernel_slot_default">パッケージの既定値</string>
+    <string name="kernel_slot_current">現在のスロット（%1$s）</string>
+    <string name="kernel_slot_inactive">非アクティブなスロット（%1$s）</string>
+    <string name="kernel_slot_description">スロットの選択はパッケージが処理します。この端末用のZIPのみ使用してください。</string>
+    <string name="kernel_slot_unknown">現在のスロットを特定できませんでした。パッケージが書き込み先を選択します。</string>
+    <string name="kernel_slot_unsupported">このパッケージはAnyKernel3の標準スロット選択に対応していると確認できません。既定の書き込み先を使用してください。</string>
+    <string name="kernel_single_slot">この端末からA/Bスロットの情報が報告されていません。パッケージが書き込み先を選択します。</string>
+    <string name="kernel_inactive_warning">非アクティブなスロットに互換性のあるシステムがある場合のみ使用してください。Thorは次回起動するスロットを変更しません。</string>
+    <string name="kernel_before_flash">書き込み前に</string>
+    <string name="kernel_safety_summary">端末の機種に合った信頼できるZIPを使用し、復旧用イメージを保管してください。書き込み前に確認を求めます。</string>
+    <string name="kernel_slot_both">両方のスロット（A + B）</string>
+    <string name="kernel_both_warning">インストーラー全体を現在のスロット、非アクティブなスロットの順に2回実行します。両方のシステムへの繰り返しインストールを作者がサポートするパッケージのみ使用してください。両方のカーネルが置き換えられ、未変更の予備が失われ、共有部分への変更が繰り返される場合があります。失敗すると片方だけ更新された状態になることがあります。Thorは変更の取り消しや次回起動スロットの変更はできません。</string>
+    <string name="kernel_both_acknowledge">両方のスロットが変更される可能性を理解し、このパッケージが両方のシステムと繰り返しインストールをサポートすることを確認しました。</string>
+    <string name="kernel_both_partial">少なくとも1回の実行は成功しましたが、両方のスロットは正常に完了していません。ログで各実行を確認してください。変更の取り消しは行われていません。</string>
+    <string name="kernel_shared_blocked">別のカーネル操作が実行中か、新しい起動を待っています。別のZIPを共有する前に、拡張機能のカーネル書き込み画面で確認してください。</string>
+</resources>

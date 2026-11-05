@@ -30,7 +30,7 @@
     <string name="dynamic_colors">Colores dinámicos</string>
     <string name="dynamic_colors_desc">Integración con Material You</string>
     <string name="biometric_lock">Bloqueo biométrico</string>
-    <string name="biometric_lock_desc">Exigir autenticación al iniciar. Al activarlo, se bloquean las capturas y grabaciones de pantalla de Thor y se oculta su vista previa en las aplicaciones recientes.</string>
+    <string name="biometric_lock_desc">Exigir autenticación al abrir la aplicación principal, bloquear sus capturas y grabaciones de pantalla y ocultar su vista previa en Recientes.</string>
     <string name="biometric_not_available">Biometría no registrada o disponible</string>
     <string name="active_engine">Motor activo</string>
     <string name="active_engine_desc">Cambiar entre proveedores disponibles</string>
@@ -225,10 +225,16 @@
         <item quantity="one">%1$d aplicación · toca para congelar</item>
         <item quantity="other">%1$d aplicaciones · toca para congelar</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d aplicación · toca para descongelar</item>
+        <item quantity="other">%1$d aplicaciones · toca para descongelar</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Concede Root / Shizuku / Dhizuku primero</string>
     <string name="tile_no_apps_toast">No hay aplicaciones en el Congelador</string>
     <string name="tile_checking">Comprobando…</string>
     <string name="tile_freezing">Congelando…</string>
+    <string name="tile_unfreezing">Descongelando…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ajustes del congelador</string>
@@ -496,7 +502,6 @@
     
     <!-- Missing Translations -->
     <string name="removed_from_freezer_partial_failure">Se eliminaron %1$d/%2$d aplicaciones del Congelador (%3$d fallaron)</string>
-    <string name="suspend_owned_by_other_privilege">No se puede reanudar %1$s desde aquí. Fue suspendida por %2$s y Android solo permite que el mismo privilegio la reanude. Cambia Thor a ese modo de privilegio e inténtalo de nuevo.</string>
     <string name="freeze_system_app_requires_root">No se puede congelar %1$s desde aquí. Este dispositivo no ha dejado que Thor la desactive y Android solo permite que root elimine una app preinstalada para un solo usuario. La app se ha quedado intacta: para congelarla necesitas el modo Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">No se puede congelar %1$s. Este dispositivo no ha dejado que Thor la desactive y eliminarla para este usuario también ha fallado. Android informó: %2$s</string>
     <string name="freeze_system_app_disable_refused">No se puede congelar %1$s. Este dispositivo se ha negado a desactivarla, así que Thor la ha dejado intacta: eliminarla en su lugar podría cerrar tu sesión en las cuentas que gestiona.</string>
@@ -572,8 +577,10 @@
     <string name="suspend_instead_of_freeze_desc">Al congelar (incluyendo el autocongelado), suspende las aplicaciones en lugar de desactivarlas. Las aplicaciones suspendidas siguen siendo visibles pero pausadas.</string>
     <string name="skip_routine_freeze_confirmation">No confirmar las congelaciones habituales</string>
     <string name="skip_routine_freeze_confirmation_desc">Congelar aplicaciones del sistema sin preguntar antes, salvo que la lista UAD las marque. Las marcadas como Expert siguen avisando y las inseguras siguen bloqueadas.</string>
-    <string name="add_freezer_to_launcher">Añadir Congelador al lanzador</string>
-    <string name="add_freezer_to_launcher_desc">Mostrar las aplicaciones congeladas como accesos directos en la pantalla de inicio para abrirlas con un toque</string>
+
+    <string name="disable_shortcuts">Desactivar accesos directos</string>
+    <string name="disable_shortcuts_desc">Desactiva los accesos directos del Congelador, incluidos los fijados en la pantalla de inicio</string>
+    <string name="shortcuts_disabled_message">Los accesos directos están desactivados en Thor</string>
     <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>
     <string name="freeze_all_apps">Congelar todo en el Congelador</string>
     <string name="shortcuts">Accesos directos</string>

@@ -13,16 +13,22 @@ descriptions and localized app names in `shizu_store.json`. These Shizu-only
 translations do not automatically create Google Play locale listings. Review
 every localized claim against the current app before reusing that copy on Play.
 
-The Play phone screenshots and feature graphic are generated from reviewed,
-real app captures under `web/src/assets/screenshots/` and
-`fastlane/assets/captures/`. The latter contains the validated UAD filter and
-Backup & Restore captures used only in the Play listing. To rebuild, install
-Pillow and run `python3 fastlane/scripts/build-listing-images.py` from any
-directory. Review all eight phone images and the feature graphic at their actual
-size after each change. The eight phone screenshots fill Play's phone limit;
-the icon is the existing Thor brand mark. Captions are
-written to help people understand a screenshot while browsing; do not assume
-Google indexes text baked into images as search keywords.
+The Play screenshots and feature graphic are generated from real app captures
+under `web/src/assets/screenshots/` and `fastlane/assets/captures/`. The latter
+includes the UAD and Backup & Restore phone captures, plus unfolded foldable
+and tablet captures. To rebuild, install Pillow and run
+`python3 fastlane/scripts/build-listing-images.py` from any directory. Review
+all eight phone, six foldable, and five tablet images and the feature graphic
+at their actual size after each change. The foldable set is generated in
+`sevenInchScreenshots/` and the tablet set in `tenInchScreenshots/`, the Play
+Console slots recognized by Fastlane. The eight phone screenshots fill Play's
+phone limit; the icon is the existing Thor brand mark. Captions help people
+understand a screenshot while browsing; do not assume Google indexes text
+baked into images as search keywords.
+
+The foldable and tablet captures were refreshed on the v1.97.1 emulator in
+October 2026. Check them against the current UI before publishing a later
+release.
 
 Keep titles within 30 characters, short descriptions within 80, and full
 descriptions within 4,000. Use precise terms people search for, but describe

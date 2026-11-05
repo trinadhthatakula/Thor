@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">Kernel flasher</string>
+    <string name="kernel_description">Flash an AnyKernel3 kernel ZIP using root.</string>
+    <string name="kernel_requirements">Requires root and a working Magisk, KernelSU or APatch BusyBox. Other ZIP formats and boot images are not supported.</string>
+    <string name="kernel_warning">Only flash a package from a source you trust, built for your exact device and ROM. Its scripts and native tools run as root and can modify boot partitions, data and device security. An incompatible or interrupted flash can prevent Android from starting. Keep a known working boot image and a way to restore it outside Thor.</string>
+    <string name="kernel_choose">Choose AnyKernel3 ZIP</string>
+    <string name="kernel_flash">Flash kernel</string>
+    <string name="kernel_confirm_title">Flash this kernel?</string>
+    <string name="kernel_acknowledge">I trust this package, checked device compatibility and have a recovery method.</string>
+    <string name="kernel_confirmation">Flashing cannot be cancelled after it starts. ZIP validation checks the format, not compatibility or safety. Thor will not automatically reboot, retry or restore the previous kernel.</string>
+    <string name="kernel_root_required">Grant Thor root access to select and flash a kernel.</string>
+    <string name="kernel_preparing">Checking the ZIP…</string>
+    <string name="kernel_starting">Preparing the root installer…</string>
+    <string name="kernel_running">Flashing kernel. Do not power off or force-stop Thor.</string>
+    <string name="kernel_success">The installer exited successfully. Boot compatibility has not been verified. Review the log before rebooting.</string>
+    <string name="kernel_failed">The operation failed. Review the details below.</string>
+    <string name="kernel_unknown">The installer outcome is unknown. It may still be running or may have partially changed the device. Do not start another flash. Check the log and your recovery procedure.</string>
+    <string name="kernel_boot_lock">Another flash is blocked until a new device boot is observed. Rebooting after a failed flash may require external recovery.</string>
+    <string name="kernel_save_log">Save log</string>
+    <string name="kernel_reboot">Reboot device</string>
+    <string name="kernel_reboot_confirm">Reboot the device now?</string>
+    <string name="kernel_service_blocked">Enable the kernel flasher notification channel and try again while Thor is open.</string>
+    <string name="kernel_hash">SHA-256: %1$s</string>
+    <string name="kernel_open">Open flasher</string>
+    <string name="kernel_package_heading">1. Kernel package</string>
+    <string name="kernel_slot_heading">2. Target slot</string>
+    <string name="kernel_change_package">Change ZIP</string>
+    <string name="kernel_package_details">Package details</string>
+    <string name="kernel_slot_default">Package default</string>
+    <string name="kernel_slot_current">Current slot (%1$s)</string>
+    <string name="kernel_slot_inactive">Inactive slot (%1$s)</string>
+    <string name="kernel_slot_description">The package handles slot selection. Only use a ZIP built for this device.</string>
+    <string name="kernel_slot_unknown">The current slot could not be identified. The package will choose its target.</string>
+    <string name="kernel_slot_unsupported">This package does not declare standard AnyKernel3 slot selection. Use its default target.</string>
+    <string name="kernel_single_slot">This device does not report A/B slots. The package will choose its target.</string>
+    <string name="kernel_inactive_warning">Use the inactive slot only if it contains a compatible system. Thor does not change which slot boots next.</string>
+    <string name="kernel_before_flash">Before you flash</string>
+    <string name="kernel_safety_summary">Use a trusted ZIP for your exact device and keep a recovery image. You will confirm before flashing.</string>
+    <string name="kernel_slot_both">Both slots (A + B)</string>
+    <string name="kernel_both_warning">Runs the entire installer twice: current slot, then inactive. Use only a package whose author supports repeated installation on both installed systems. This can replace both kernels, remove the untouched fallback and repeat shared changes. Failure can leave only one slot updated. Thor cannot roll back or change which slot boots next.</string>
+    <string name="kernel_both_acknowledge">I understand both slots can be changed and this package supports both installed systems and repeated installation.</string>
+    <string name="kernel_both_partial">At least one pass succeeded, but both slots did not finish successfully. Review each pass in the log; no rollback was performed.</string>
+    <string name="kernel_shared_blocked">Another kernel operation is active or awaiting a new boot. Open Kernel flasher in Extensions to review it before sharing another ZIP.</string>
+    <string name="bolt" translatable="false">Bolt</string>
+</resources>

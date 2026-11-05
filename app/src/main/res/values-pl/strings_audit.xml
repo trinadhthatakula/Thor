@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">Wybierz folder</string>
+    <string name="backup_hub_custom_folder">Własny folder</string>
+    <string name="backup_hub_delete_access">Odmówiono dostępu do pamięci. Przywróć dostęp do folderu i spróbuj ponownie.</string>
+    <string name="backup_hub_delete_failed">Nie udało się usunąć %1$s.</string>
+    <string name="backup_hub_delete_missing">Nie znaleziono archiwum. Odśwież listę.</string>
+    <string name="backup_hub_delete_read_only">Ta lokalizacja jest tylko do odczytu.</string>
+    <string name="backup_hub_delete_unavailable">Dostawca pamięci nie ukończył usuwania. Sprawdź lokalizację i spróbuj ponownie.</string>
+    <string name="backup_hub_empty_saved_desc">Utwórz kopię zapasową lub wyeksportuj aplikację, aby zobaczyć ją tutaj.</string>
+    <string name="backup_hub_empty_saved_title">Brak zapisanych archiwów</string>
+    <string name="backup_hub_folder_failed">Nie udało się zapisać dostępu do tego folderu. Wybierz go ponownie.</string>
+    <string name="backup_hub_folder_hint">To ustawia folder używany do eksportu i zapisywania archiwów.</string>
+    <string name="backup_hub_newest">Od najnowszych</string>
+    <string name="backup_hub_no_matches">Brak archiwów pasujących do wyszukiwania lub filtra.</string>
+    <string name="backup_hub_saved_archives">Zapisane archiwa</string>
+    <string name="backup_hub_scan_failed">Nie udało się odświeżyć zapisanych archiwów. Spróbuj ponownie.</string>
+    <string name="backup_hub_search_archives">Szukaj zapisanych archiwów</string>
+    <string name="backup_hub_source_unavailable">Nie udało się odczytać całej zawartości %1$s. Na liście może brakować niektórych archiwów.</string>
+    <string name="installer_app_lock">Obejmij instalator blokadą aplikacji</string>
+    <string name="installer_app_lock_desc">Wymagaj uwierzytelniania także w przenośnym instalatorze i Bolt oraz chroń ich zrzuty ekranu i podglądy ostatnich aplikacji. Wymaga blokady aplikacji.</string>
+    <string name="installer_lock_include">Uwzględnij instalator</string>
+    <string name="installer_lock_main_only">Tylko główna aplikacja</string>
+    <string name="installer_lock_not_saved">Nie udało się zapisać ustawienia blokady instalatora. Spróbuj ponownie.</string>
+    <string name="installer_lock_prompt_desc">Wymagać uwierzytelniania także przy otwieraniu przenośnego instalatora lub Bolt? Ochroni to również zrzuty ekranu i podglądy ostatnich aplikacji. Możesz zmienić to później w ustawieniach zabezpieczeń.</string>
+    <string name="installer_lock_prompt_title">Objąć instalator blokadą aplikacji?</string>
+    <string name="kernel_refresh_root">Odśwież dostęp root</string>
+    <string name="log_jump_latest">Przejdź do najnowszych</string>
+    <string name="log_jump_latest_new_output">Nowe wpisy · Przejdź do najnowszych</string>
+</resources>

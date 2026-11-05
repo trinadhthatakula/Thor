@@ -3,7 +3,7 @@
 package com.valhalla.thor.data.source.local.room
 
 import android.app.Application
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.backup.job.DataTaskStore
 import com.valhalla.thor.domain.model.AppExportRequest

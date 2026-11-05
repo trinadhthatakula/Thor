@@ -304,12 +304,9 @@
     <string name="backup_hub_hero_backup_desc">Créer une sauvegarde chiffrée (.thorbak) ou un pack APK</string>
     <string name="backup_hub_hero_restore_title">Restaurer depuis un fichier</string>
     <string name="backup_hub_hero_restore_desc">Sélectionner une archive .thorbak ou un pack du stockage</string>
-    <string name="backup_hub_section_backups">Sauvegardes dans Downloads/Thor</string>
     <string name="backup_hub_filter_all">Tout</string>
     <string name="backup_hub_filter_backups">Sauvegardes</string>
     <string name="backup_hub_filter_bundles">Packs</string>
-    <string name="backup_hub_empty_title">Aucune sauvegarde dans Downloads/Thor</string>
-    <string name="backup_hub_empty_desc">Les archives enregistrées dans Downloads/Thor apparaîtront ici pour une restauration rapide.</string>
     <string name="backup_hub_tip_thorbak_title">Sauvegardes de données (.thorbak)</string>
     <string name="backup_hub_tip_thorbak_desc">Archives complètes chiffrées contenant les données d\'appli et d\'éventuelles divisions APK. Les données privées d\'appli (CE/DE) nécessitent le root, tandis que les données de stockage partagé peuvent être restaurées avec un shell privilégié.</string>
     <string name="backup_hub_tip_bundle_title">Packs d\'applications (.xapk / .apks / .apk)</string>
@@ -324,5 +321,4 @@
     <string name="backup_hub_badge_app_bundle">Pack appli</string>
     <string name="backup_hub_action_delete">Supprimer</string>
     <string name="backup_hub_action_share">Partager</string>
-    <string name="backup_hub_no_archives">Aucune archive trouvée</string>
 </resources>

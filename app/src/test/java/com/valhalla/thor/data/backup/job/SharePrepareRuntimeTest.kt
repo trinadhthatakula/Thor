@@ -6,7 +6,7 @@ import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
 import android.content.ContextWrapper
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
@@ -54,7 +54,7 @@ class SharePrepareRuntimeTest {
     }
     private val db by lazy {
         Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries()
-            .setQueryExecutor { it.run() }.setTransactionExecutor { it.run() }.build()
+            .setQueryCoroutineContext(Dispatchers.Unconfined).build()
     }
     private val store by lazy { DataTaskStore(db.dataTaskDao()) }
     private val packages = DefaultPackageOperationCoordinator()

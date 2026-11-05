@@ -4,7 +4,9 @@
 package com.valhalla.thor.data.launcher
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FreezerShortcutContractTest {
@@ -31,5 +33,13 @@ class FreezerShortcutContractTest {
             FreezerShortcutContract.appShortcutId("a"),
             FreezerShortcutContract.appShortcutId("a")
         )
+    }
+
+    @Test
+    fun global_switch_only_targets_freezer_shortcuts() {
+        assertTrue(FreezerShortcutContract.isFreezerShortcutId(FreezerShortcutContract.SHORTCUT_FREEZE_ALL))
+        assertTrue(FreezerShortcutContract.isFreezerShortcutId(FreezerShortcutContract.SHORTCUT_UNFREEZE_ALL))
+        assertTrue(FreezerShortcutContract.isFreezerShortcutId(FreezerShortcutContract.appShortcutId("com.example.app")))
+        assertFalse(FreezerShortcutContract.isFreezerShortcutId("unrelated_shortcut"))
     }
 }

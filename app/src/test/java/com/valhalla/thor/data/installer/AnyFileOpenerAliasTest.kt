@@ -90,7 +90,7 @@ class AnyFileOpenerAliasTest {
     }
 
     @Test
-    fun `the typeless filter lives only on the alias, never on the activity`() {
+    fun `installer VIEW filters support content and file while typeless handling stays on the alias`() {
         // The whole point of the alias is that this filter is not reachable while it is off. If it
         // were also left on the always-enabled activity, the switch would be decorative.
         val body = manifestText.substringAfter("<activity-alias").substringBefore("</activity-alias>")
@@ -98,6 +98,29 @@ class AnyFileOpenerAliasTest {
         assertTrue("alias lost its file:// scheme", body.contains("""android:scheme="file""""))
 
         val beforeAlias = manifestText.substringBefore("<activity-alias")
+        val installer = beforeAlias.substringAfter(
+            """android:name=".presentation.installer.PortableInstallerActivity"""",
+            missingDelimiterValue = "",
+        ).substringBefore("</activity>")
+        val installerViewFilters = Regex("""<intent-filter>(.*?)</intent-filter>""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(installer)
+            .map { it.groupValues[1] }
+            .filter { it.contains("""android:name="android.intent.action.VIEW"""") }
+            .toList()
+        assertEquals("expected the APK, bundle and extension VIEW filters", 3, installerViewFilters.size)
+        installerViewFilters.forEach { filter ->
+            assertTrue("installer VIEW filter lost content://", filter.contains("""android:scheme="content""""))
+            assertTrue("installer VIEW filter lost file://", filter.contains("""android:scheme="file""""))
+        }
+
+        val extensionFilter = installerViewFilters.single { it.contains("android:pathSuffix") }
+        for (extension in listOf("apk", "apks", "apkm", "apkp", "xapk", "zip")) {
+            for (suffix in listOf(extension, extension.uppercase())) {
+                assertTrue("extension filter lost .$suffix pathSuffix",
+                    extensionFilter.contains("""android:pathSuffix=".$suffix""""))
+            }
+        }
+
         // Every <data> on the activity must carry a mimeType or a path matcher. A bare scheme-only
         // <data> there is the typeless filter escaping back onto the always-on component.
         val activityFilters = Regex("""<intent-filter>(.*?)</intent-filter>""", RegexOption.DOT_MATCHES_ALL)

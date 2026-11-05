@@ -1,0 +1,11 @@
+• ❄️ Freezer shortcuts are on by default; saved opt-outs stay off.
+
+• 🔐 Choose whether app lock also protects the installer.
+
+• 📂 Search and sort saved backups, refresh completed exports, and reconnect missing folders.
+
+• 📜 Read earlier logs without jumping; return to new output when ready.
+
+• 📦 Open local package files with a picker fallback when access fails.
+
+• 🎨 Clearer actions, safer passphrase entry and improved screen spacing.

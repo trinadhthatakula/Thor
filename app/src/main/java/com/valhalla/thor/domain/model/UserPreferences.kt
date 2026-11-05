@@ -30,6 +30,8 @@ data class UserPreferences(
 
     // Security
     val biometricLockEnabled: Boolean = false,
+    /** Opt-in coverage for external package installation and Bolt. */
+    val installerAppLockEnabled: Boolean = false,
 
     // Work Mode
     val preferredPrivilegeMode: PrivilegeMode? = null,
@@ -46,8 +48,8 @@ data class UserPreferences(
     // Freezer action mode: FREEZE = pm disable, SUSPEND = pm suspend
     val freezerMode: FreezerMode = FreezerMode.FREEZE,
 
-    // Add Freezer to launcher (home-screen shortcuts for frozen apps)
-    val addFreezerToLauncher: Boolean = false,
+    // Launcher shortcuts are available unless the user explicitly disables them.
+    val disableShortcuts: Boolean = false,
 
     // Skip the freeze confirmation for system apps at FreezeTier.NORMAL — the dialog someone
     // debloating a fresh device answers forty times in a row. Reaches nothing else: EXPERT still

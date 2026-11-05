@@ -5,8 +5,8 @@ package com.valhalla.thor.di
 
 import android.content.Context
 import android.content.pm.PackageManager
-import androidx.room.Room
-import com.valhalla.thor.BuildConfig
+import androidx.room3.Room
+import androidx.sqlite.driver.AndroidSQLiteDriver
 import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
 import com.valhalla.thor.data.backup.PartialArchiveLedger
@@ -64,17 +64,16 @@ class AppModule {
 
     @Single
     fun appDatabase(context: Context): AppDatabase {
-        val builder = Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
+        return Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
+            .setDriver(AndroidSQLiteDriver())
+            .setQueryCoroutineContext(Dispatchers.IO)
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_8_9,
                 AppDatabase.MIGRATION_9_10,
             )
-
-        if (BuildConfig.DEBUG) {
-            builder.fallbackToDestructiveMigration(dropAllTables = true)
-        }
-        return builder.build()
+            // Fail an unsupported upgrade in every build; never discard durable queues or profiles.
+            .build()
     }
 
     @Single

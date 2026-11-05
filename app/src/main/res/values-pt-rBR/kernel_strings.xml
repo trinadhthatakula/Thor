@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">Instalador de kernels</string>
+    <string name="kernel_description">Instale um kernel em formato ZIP AnyKernel3 com acesso root.</string>
+    <string name="kernel_requirements">Requer acesso root e uma versão funcional do BusyBox do Magisk, KernelSU ou APatch. Outros formatos ZIP e imagens de inicialização não são compatíveis.</string>
+    <string name="kernel_warning">Instale apenas um pacote de uma fonte confiável, criado especificamente para seu dispositivo e ROM. Os scripts e as ferramentas nativas do pacote são executados com acesso root e podem modificar as partições de inicialização, os dados e a segurança do dispositivo. Uma instalação incompatível ou interrompida pode impedir a inicialização do Android. Guarde uma imagem de inicialização que você saiba que funciona e um método para restaurá-la fora do Thor.</string>
+    <string name="kernel_choose">Escolher ZIP AnyKernel3</string>
+    <string name="kernel_flash">Instalar kernel</string>
+    <string name="kernel_confirm_title">Instalar este kernel?</string>
+    <string name="kernel_acknowledge">Confio neste pacote, verifiquei a compatibilidade com meu dispositivo e tenho um método de recuperação.</string>
+    <string name="kernel_confirmation">A instalação não pode ser cancelada depois de começar. A validação do ZIP verifica o formato, não a compatibilidade nem a segurança. O Thor não vai reiniciar, repetir a instalação ou restaurar o kernel anterior automaticamente.</string>
+    <string name="kernel_root_required">Conceda acesso root ao Thor para selecionar e instalar um kernel.</string>
+    <string name="kernel_preparing">Verificando o ZIP…</string>
+    <string name="kernel_starting">Preparando o instalador com acesso root…</string>
+    <string name="kernel_running">Instalando o kernel. Não desligue o dispositivo nem force a parada do Thor.</string>
+    <string name="kernel_success">O instalador terminou com sucesso. A compatibilidade de inicialização não foi verificada. Confira o registro antes de reiniciar.</string>
+    <string name="kernel_failed">A operação falhou. Confira os detalhes abaixo.</string>
+    <string name="kernel_unknown">O resultado do instalador é desconhecido. Ele pode ainda estar em execução ou ter alterado parcialmente o dispositivo. Não inicie outra instalação. Confira o registro e seu procedimento de recuperação.</string>
+    <string name="kernel_boot_lock">Outra instalação fica bloqueada até que uma nova inicialização do dispositivo seja detectada. Reiniciar após uma instalação com falha pode exigir uma recuperação com ferramentas externas.</string>
+    <string name="kernel_save_log">Salvar registro</string>
+    <string name="kernel_reboot">Reiniciar dispositivo</string>
+    <string name="kernel_reboot_confirm">Reiniciar o dispositivo agora?</string>
+    <string name="kernel_service_blocked">Ative o canal de notificações do instalador de kernels e tente novamente com o Thor aberto.</string>
+    <string name="kernel_hash">SHA-256: %1$s</string>
+    <string name="kernel_open">Abrir instalador</string>
+    <string name="kernel_package_heading">1. Pacote do kernel</string>
+    <string name="kernel_slot_heading">2. Slot de destino</string>
+    <string name="kernel_change_package">Trocar ZIP</string>
+    <string name="kernel_package_details">Detalhes do pacote</string>
+    <string name="kernel_slot_default">Padrão do pacote</string>
+    <string name="kernel_slot_current">Slot atual (%1$s)</string>
+    <string name="kernel_slot_inactive">Slot inativo (%1$s)</string>
+    <string name="kernel_slot_description">O pacote controla a seleção do slot. Use apenas um ZIP feito para este dispositivo.</string>
+    <string name="kernel_slot_unknown">Não foi possível identificar o slot atual. O pacote escolherá o destino.</string>
+    <string name="kernel_slot_unsupported">Este pacote não declara a seleção padrão de slot do AnyKernel3. Use o destino padrão.</string>
+    <string name="kernel_single_slot">Este dispositivo não informa slots A/B. O pacote escolherá o destino.</string>
+    <string name="kernel_inactive_warning">Use o slot inativo apenas se ele contiver um sistema compatível. O Thor não altera o slot usado na próxima inicialização.</string>
+    <string name="kernel_before_flash">Antes de instalar</string>
+    <string name="kernel_safety_summary">Use um ZIP confiável para o modelo exato do dispositivo e guarde uma imagem de recuperação. Você precisará confirmar antes da instalação.</string>
+    <string name="kernel_slot_both">Ambos os slots (A + B)</string>
+    <string name="kernel_both_warning">Executa o instalador completo duas vezes: primeiro o slot atual, depois o inativo. Use apenas um pacote cujo autor ofereça suporte à instalação repetida nos dois sistemas instalados. Isso pode substituir os dois kernels, eliminar a alternativa intacta e repetir alterações compartilhadas. Uma falha pode deixar apenas um slot atualizado. O Thor não pode reverter alterações nem mudar o slot da próxima inicialização.</string>
+    <string name="kernel_both_acknowledge">Entendo que os dois slots podem ser alterados e que este pacote oferece suporte aos dois sistemas instalados e à instalação repetida.</string>
+    <string name="kernel_both_partial">Pelo menos uma execução teve sucesso, mas os dois slots não foram concluídos com sucesso. Confira cada execução no registro; as alterações não foram revertidas.</string>
+    <string name="kernel_shared_blocked">Outra operação de kernel está ativa ou aguardando uma nova inicialização. Abra a ferramenta de instalação de kernels em Extensões para conferir antes de compartilhar outro ZIP.</string>
+</resources>

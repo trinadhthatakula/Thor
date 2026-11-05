@@ -30,7 +30,7 @@
     <string name="dynamic_colors">ألوان ديناميكية</string>
     <string name="dynamic_colors_desc">تكامل Material You</string>
     <string name="biometric_lock">قفل القياسات الحيوية</string>
-    <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل. عند تفعيل القفل، تُحظر لقطات الشاشة وتسجيل الشاشة في Thor وتُخفى معاينته في التطبيقات الأخيرة.</string>
+    <string name="biometric_lock_desc">طلب المصادقة عند فتح التطبيق الرئيسي، وحظر لقطات الشاشة وتسجيلها، وإخفاء معاينته في التطبيقات الأخيرة.</string>
     <string name="biometric_not_available">المقاييس الحيوية غير مسجلة أو غير متوفرة</string>
     <string name="active_engine">المحرك النشط</string>
     <string name="active_engine_desc">التبديل بين الموفرين المتاحين</string>
@@ -230,11 +230,21 @@
         <item quantity="many">%1$d تطبيقًا · اضغط للتجميد</item>
         <item quantity="other">%1$d تطبيق · اضغط للتجميد</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="zero">لا توجد تطبيقات · اضغط لإلغاء التجميد</item>
+        <item quantity="one">تطبيق واحد · اضغط لإلغاء التجميد</item>
+        <item quantity="two">تطبيقان · اضغط لإلغاء التجميد</item>
+        <item quantity="few">%1$d تطبيقات · اضغط لإلغاء التجميد</item>
+        <item quantity="many">%1$d تطبيقًا · اضغط لإلغاء التجميد</item>
+        <item quantity="other">%1$d تطبيق · اضغط لإلغاء التجميد</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
     <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
     <string name="tile_checking">جارٍ التحقق…</string>
     <string name="tile_freezing">جارٍ التجميد…</string>
+    <string name="tile_unfreezing">جارٍ إلغاء التجميد…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
@@ -526,7 +536,6 @@
     
     <!-- Missing Translations -->
     <string name="removed_from_freezer_partial_failure">تمت إزالة %1$d/%2$d تطبيقات من المجمد (فشل %3$d)</string>
-    <string name="suspend_owned_by_other_privilege">لا يمكن إلغاء تعليق %1$s من هنا. تم تعليقه بواسطة %2$s، ولا يسمح Android إلا للصلاحية نفسها بإلغائه. بدّل Thor إلى وضع الصلاحية ذاك وحاول مرة أخرى.</string>
     <string name="freeze_system_app_requires_root">لا يمكن تجميد %1$s من هنا. لم يسمح هذا الجهاز لـ Thor بتعطيله، ولا يسمح Android إلا لـ root بإزالة تطبيق مثبَّت مسبقًا لمستخدم واحد. لم يطرأ أي تغيير على التطبيق — يتطلب تجميده وضع Root في Thor.</string>
     <string name="freeze_system_app_removal_failed">لا يمكن تجميد %1$s. لم يسمح هذا الجهاز لـ Thor بتعطيله، كما فشلت إزالته لهذا المستخدم. أبلغ Android عن: %2$s</string>
     <string name="freeze_system_app_disable_refused">لا يمكن تجميد %1$s. رفض هذا الجهاز تعطيله، لذلك تركه Thor دون تغيير — فإزالته بدلاً من ذلك قد تُخرجك من الحسابات التي يديرها.</string>
@@ -606,8 +615,10 @@
     <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>
     <string name="skip_routine_freeze_confirmation">عدم تأكيد عمليات التجميد المعتادة</string>
     <string name="skip_routine_freeze_confirmation_desc">تجميد تطبيقات النظام دون السؤال أولاً، ما لم تكن قائمة UAD قد وسمتها. التطبيقات المصنفة كـ Expert لا تزال تُحذّر، وغير الآمنة لا يزال تجميدها محظوراً.</string>
-    <string name="add_freezer_to_launcher">إضافة المجمد إلى شاشة التشغيل</string>
-    <string name="add_freezer_to_launcher_desc">إظهار التطبيقات المجمدة كاختصارات على الشاشة الرئيسية يمكنك النقر عليها لتشغيلها</string>
+
+    <string name="disable_shortcuts">تعطيل الاختصارات</string>
+    <string name="disable_shortcuts_desc">إيقاف اختصارات المجمّد، بما فيها الاختصارات المثبّتة على الشاشة الرئيسية</string>
+    <string name="shortcuts_disabled_message">الاختصارات معطّلة في Thor</string>
     <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>
     <string name="freeze_all_apps">تجميد الكل في المجمد</string>
     <string name="shortcuts">الاختصارات</string>

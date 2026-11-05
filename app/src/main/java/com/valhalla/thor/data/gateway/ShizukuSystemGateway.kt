@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.gateway
 
+import com.valhalla.thor.domain.model.SuspensionChange
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -496,12 +497,24 @@ class ShizukuSystemGateway internal constructor(
         reflector.getApplicationInfoOrNull(packageName)
             ?.let { !it.isEffectivelyEnabled } ?: true
 
+    override suspend fun isAppSuspendedByThor(packageName: String): Boolean? = withContext(ioDispatcher) {
+        try {
+            reflector.isAppSuspendedByThor(packageName)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override suspend fun setAppSuspended(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        return runAction { reflector.setAppSuspended(packageName, isSuspended) }
+    ): Result<SuspensionChange> = withContext(ioDispatcher) {
+        try { Result.success(reflector.changeAppSuspension(packageName, isSuspended)) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { Result.failure(failure) }
     }
 
     override suspend fun setAppRestricted(
