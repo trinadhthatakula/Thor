@@ -35,6 +35,7 @@ export const ROUTES: NavLink[] = [
   { href: '/download', label: 'Download' },
   { href: '/faq', label: 'FAQ' },
   { href: '/privacy', label: 'Privacy', footerOnly: true },
+  { href: '/terms', label: 'Terms of Service', footerOnly: true },
   { href: '/extensions-policy', label: 'Extensions policy', footerOnly: true },
   { href: '/build-an-extension', label: 'Build an extension', footerOnly: true },
 ]

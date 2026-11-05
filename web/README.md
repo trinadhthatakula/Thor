@@ -1,6 +1,6 @@
 # Thor landing page
 
-The static site at **<https://thor.trinadhthatakula.com>** — seven routes plus a 404, built with
+The static site at **<https://thor.trinadhthatakula.com>** — eight routes plus a 404, built with
 Astro, deployed on Vercel from the `master` branch. No backend, no forms, no analytics, and no client
 JavaScript except the theme toggle.
 
@@ -11,6 +11,10 @@ unaffected.
 
 Design spec: [`docs/superpowers/specs/2026-08-01-thor-landing-page-design.md`](../docs/superpowers/specs/2026-08-01-thor-landing-page-design.md).
 Implementation plan: [`docs/superpowers/plans/2026-08-01-thor-landing-page-implementation.md`](../docs/superpowers/plans/2026-08-01-thor-landing-page-implementation.md).
+
+The public Terms of Service page is `/terms` (`src/pages/terms.mdx`), linked from the footer and
+the subscription explanations in Download and FAQ. It covers the optional Google Play support
+subscription and can be supplied as the app's Terms of Service URL in Play Console once deployed.
 
 ---
 
