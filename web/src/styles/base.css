@@ -33,6 +33,13 @@ html {
   scroll-padding-block-start: var(--space-2xl);
 }
 
+/* Nav.astro wraps the sticky header into two rows at this breakpoint. */
+@media (max-width: 48rem) {
+  html {
+    scroll-padding-block-start: calc(var(--space-2xl) + var(--space-xl));
+  }
+}
+
 body {
   min-height: 100svh;
   background-color: var(--background);
