@@ -124,7 +124,7 @@ fun ManageFreezerSheet(
                     letterSpacing = (-1).sp
                 )
                 ConnectedButtonGroup(
-                    items = AppListType.entries.map { type ->
+                    items = AppListType.individualTypes.map { type ->
                         ConnectedButtonGroupItem.Icon(
                             icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
                             contentDescription = stringResource(
@@ -132,8 +132,8 @@ fun ManageFreezerSheet(
                             )
                         )
                     },
-                    selectedIndex = AppListType.entries.indexOf(selectedType),
-                    onItemSelected = { selectedType = AppListType.entries[it] },
+                    selectedIndex = AppListType.individualTypes.indexOf(selectedType),
+                    onItemSelected = { selectedType = AppListType.individualTypes[it] },
                     modifier = Modifier.width(IntrinsicSize.Max)
                 )
             }

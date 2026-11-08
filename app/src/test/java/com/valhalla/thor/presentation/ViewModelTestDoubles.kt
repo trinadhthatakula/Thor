@@ -694,6 +694,7 @@ class FakePreferenceRepository(
             when (appListType) {
                 AppListType.USER -> it.copy(userAppFilter = filter)
                 AppListType.SYSTEM -> it.copy(systemAppFilter = filter)
+                AppListType.ALL -> it.copy(combinedAppFilter = filter)
             }
         }
     }
@@ -702,8 +703,17 @@ class FakePreferenceRepository(
         write { it.copy(showReinstallAllCard = isVisible) }
     }
 
+    override suspend fun setCombinedAppListsEnabled(enabled: Boolean) {
+        write { it.copy(combinedAppListsEnabled = enabled) }
+    }
+
     override suspend fun setDefaultTab(tab: DefaultTab) {
         write { it.copy(defaultTab = tab) }
+    }
+
+    override suspend fun setNavigationBarPreferences(preferences: com.valhalla.thor.domain.model.NavigationBarPreferences): Boolean {
+        write { it.copy(navigationBar = preferences.normalized()) }
+        return true
     }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {

@@ -763,7 +763,7 @@
     <string name="settings_summary_restore_interrupted">لم تكتمل إحدى عمليات الاستعادة</string>
     <string name="settings_summary_backup">استعادة أرشيف أو تغيير عبارة المرور</string>
     <string name="settings_summary_unprivileged">يتطلب Root أو Shizuku أو Dhizuku</string>
-    <string name="settings_summary_customization">الخطوط وتخطيطات الإجراءات</string>
+    <string name="settings_summary_customization">الخطوط والتنقل وتخطيطات الإجراءات</string>
 
     <string name="settings_category_customization">التخصيص</string>
     <string name="customization_fonts">الخطوط</string>
@@ -1093,4 +1093,42 @@
     <string name="root_refresh_busy">بانتظار انتهاء العمليات الجارية بصلاحيات الجذر. إجراءات الجذر الجديدة متوقفة مؤقتًا.</string>
     <string name="root_refresh_timed_out">انتهت مهلة التحقق من الجذر. إجراءات الجذر الجديدة متوقفة مؤقتًا.</string>
     <string name="root_refresh_failed">تعذّر التحقق من الوصول إلى الجذر. إجراءات الجذر الجديدة متوقفة مؤقتًا.</string>
+    <string name="user_app">تطبيق مستخدم</string>
+    <string name="uad_filter_system_apps_only">تنطبق توصيات UAD على تطبيقات النظام فقط.</string>
+
+    <!-- Navigation customization -->
+    <string name="customization_navigation">شريط التنقل</string>
+    <string name="customization_navigation_desc">خصّص الموضع والنمط والتسميات والأشكال</string>
+    <string name="navigation_preview_hint">اضغط على المعاينة لتجربة كل وجهة. تُحفظ التغييرات عند الضغط على تطبيق.</string>
+    <string name="navigation_placement">الموضع</string>
+    <string name="navigation_docked">مثبّت</string>
+    <string name="navigation_floating">عائم</string>
+    <string name="navigation_appearance">النمط</string>
+    <string name="navigation_expanding">متوسّع</string>
+    <string name="navigation_segmented">مقسّم</string>
+    <string name="navigation_standard">قياسي</string>
+    <string name="navigation_labels">التسميات</string>
+    <string name="navigation_automatic">تلقائي</string>
+    <string name="navigation_selected">المحدد</string>
+    <string name="navigation_all">الكل</string>
+    <string name="navigation_hidden">مخفية</string>
+    <string name="navigation_icons">إظهار الأيقونات</string>
+    <string name="navigation_text_only_hint">تبقى التسميات ظاهرة عند إخفاء الأيقونات.</string>
+    <string name="navigation_container_shape">شكل الشريط</string>
+    <string name="navigation_indicator_shape">شكل التحديد</string>
+    <string name="navigation_default">افتراضي</string>
+    <string name="navigation_round">مستدير</string>
+    <string name="navigation_soft">ناعم</string>
+    <string name="navigation_square">مربّع</string>
+    <string name="navigation_spacing">تباعد العناصر</string>
+    <string name="navigation_padding">الحشو الداخلي</string>
+    <string name="navigation_margin">هامش الشريط العائم</string>
+    <string name="navigation_elevation">الارتفاع</string>
+    <string name="navigation_save_failed">تعذّر حفظ نمط التنقل. حاول الضغط على تطبيق مجددًا.</string>
+    <string name="navigation_reset">إعادة ضبط</string>
+    <string name="navigation_apply">تطبيق</string>
+    <string name="navigation_saving">جارٍ الحفظ…</string>
+    <string name="navigation_dp">%1$d dp</string>
+    <string name="combined_app_lists">قوائم التطبيقات المدمجة</string>
+    <string name="combined_app_lists_desc">السماح باختيار تطبيقات المستخدم والنظام معًا في التطبيقات والمجمّد</string>
 </resources>

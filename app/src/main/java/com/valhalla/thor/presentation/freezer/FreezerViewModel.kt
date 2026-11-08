@@ -127,6 +127,7 @@ data class FreezerUiState(
     val isDhizuku: Boolean = false,
     val hasShownDisabledAppsPrompt: Boolean = false,
     val appListType: AppListType = AppListType.USER,
+    val combinedAppListsEnabled: Boolean = false,
     val isGrid: Boolean = true,
     /**
      * Carried on the state rather than passed to `FreezerScreen`, because the screen's only call
@@ -272,7 +273,10 @@ class FreezerViewModel(
     }
 
     fun updateListType(type: AppListType) {
-        _uiState.update { it.copy(appListType = type) }
+        _uiState.update {
+            val next = type.forCombinedLists(it.combinedAppListsEnabled)
+            if (it.appListType == next) it else it.copy(appListType = next, multiSelection = emptySet())
+        }
     }
 
     /**
@@ -884,6 +888,11 @@ class FreezerViewModel(
             preferenceRepository.userPreferences.collect { prefs ->
                 _uiState.update {
                     it.copy(
+                        combinedAppListsEnabled = prefs.combinedAppListsEnabled,
+                        appListType = it.appListType.forCombinedLists(prefs.combinedAppListsEnabled),
+                        multiSelection = if (it.appListType != it.appListType.forCombinedLists(prefs.combinedAppListsEnabled)) {
+                            emptySet()
+                        } else it.multiSelection,
                         autoFreezeEnabled = prefs.autoFreezeEnabled,
                         freezerMode = prefs.freezerMode,
                         hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt,

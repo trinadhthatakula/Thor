@@ -7,6 +7,8 @@ import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -54,8 +56,11 @@ class DashboardHeaderConnectedButtonGroupTest {
             }
         }
 
-        rule.onNodeWithContentDescription(system).assertIsDisplayed().performClick()
-        rule.onNodeWithContentDescription(user).assertIsDisplayed().performClick()
+        rule.onNodeWithContentDescription(user).assertIsOn().performClick().assertIsOn()
+        rule.runOnIdle { assertEquals(emptyList<AppListType>(), selections) }
+        rule.onNodeWithContentDescription(system).assertIsDisplayed().assertIsOff().performClick().assertIsOn()
+        rule.onNodeWithContentDescription(user).assertIsDisplayed().assertIsOff().performClick().assertIsOn()
+        rule.onNodeWithContentDescription(system).assertIsOff()
 
         rule.runOnIdle {
             assertEquals(listOf(AppListType.SYSTEM, AppListType.USER), selections)

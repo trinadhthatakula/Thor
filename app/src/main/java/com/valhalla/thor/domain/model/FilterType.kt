@@ -36,7 +36,7 @@ val filterTypes = listOf(
 )
 
 fun availableFilterTypes(appListType: AppListType): List<FilterType> =
-    filterTypes.filter { it != FilterType.Uad || appListType == AppListType.SYSTEM }
+    filterTypes.filter { it != FilterType.Uad || appListType.includesSystem }
 
 /**
  * The label for the filter *category*, as shown in the filter sheet.

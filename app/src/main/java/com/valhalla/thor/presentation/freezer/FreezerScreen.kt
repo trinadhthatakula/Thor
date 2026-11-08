@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.freezer
 
+import com.valhalla.thor.presentation.navigation.LocalFloatingNavigationClearance
+
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.SharedTransitionScope
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -76,13 +77,9 @@ import com.valhalla.thor.presentation.common.OperationFeedbackHost
 import com.valhalla.thor.presentation.common.OperationMessage
 import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.domain.model.AppClickAction
-import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.presentation.widgets.AppTypeFilter
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.importableDisabledApps
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
-import com.valhalla.asgard.components.ConnectedButtonGroup
-import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.queue.QueueNavigationButton
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppInfoSheet
@@ -196,7 +193,7 @@ fun FreezerScreen(
 
     val displayedApps = remember(state.freezerApps, state.searchQuery, state.appListType) {
         val filteredByType =
-            state.freezerApps.filter { it.isSystem == (state.appListType == AppListType.SYSTEM) }
+            state.freezerApps.filter(state.appListType::includes)
         val filtered = if (state.searchQuery.isBlank()) filteredByType
         else filteredByType.filter {
             it.appName?.contains(state.searchQuery, ignoreCase = true) == true ||
@@ -208,12 +205,13 @@ fun FreezerScreen(
     // The bottom toolbar stays over the list; reserve its measured height for the thumb so it
     // remains draggable at the end of a long list. The minimum avoids a one-frame overlap while
     // the selected toolbar is first measured.
+    val navigationClearance = LocalFloatingNavigationClearance.current
     val hasSelection = state.multiSelection.isNotEmpty()
     var bottomToolbarHeightPx by remember(hasSelection) { mutableIntStateOf(0) }
     val scrollbarBottomInset = maxOf(
         if (hasSelection) 120.dp else 64.dp,
         with(LocalDensity.current) { bottomToolbarHeightPx.toDp() }
-    ) + 24.dp
+    ) + 24.dp + navigationClearance
 
     // Apps the "Freeze all" / "Unfreeze all" toolbar acts on. These route through the
     // shared batch action (MultiAppAction), which owns durable task navigation; the unsafe/UAD
@@ -258,6 +256,7 @@ fun FreezerScreen(
             OperationFeedbackHost(
                 operationFeedback,
                 enabled = freezerPrompt == null && state.multiSelection.isEmpty(),
+                modifier = Modifier.padding(bottom = navigationClearance),
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -336,18 +335,10 @@ fun FreezerScreen(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             QueueNavigationButton(onClick = onNavigateToQueue)
-                            ConnectedButtonGroup(
-                                items = AppListType.entries.map { type ->
-                                    ConnectedButtonGroupItem.Icon(
-                                        icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                                        contentDescription = stringResource(
-                                            if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
-                                        )
-                                    )
-                                },
-                                selectedIndex = AppListType.entries.indexOf(state.appListType),
-                                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
-                                modifier = Modifier.width(IntrinsicSize.Max)
+                            AppTypeFilter(
+                                selection = state.appListType,
+                                onSelectionChanged = viewModel::updateListType,
+                                multiSelectEnabled = state.combinedAppListsEnabled,
                             )
                         }
                     }
@@ -436,7 +427,7 @@ fun FreezerScreen(
                             columns = GridCells.Fixed(gridLayout.columns),
                             state = gridState,
                             contentPadding = PaddingValues(
-                                bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth
+                                bottom = 100.dp + navigationClearance, top = 8.dp, end = scrollbarGutterWidth
                             ),
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -487,7 +478,7 @@ fun FreezerScreen(
                         LazyColumn(
                             state = listState,
                             contentPadding = PaddingValues(
-                                bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth
+                                bottom = 100.dp + navigationClearance, top = 8.dp, end = scrollbarGutterWidth
                             ),
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -531,7 +522,7 @@ fun FreezerScreen(
                 onDismiss = { freezerPrompt = null },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 16.dp + navigationClearance)
             )
 
             // Floating multi-select toolbar
@@ -549,7 +540,7 @@ fun FreezerScreen(
                     freezerMode = state.freezerMode,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 16.dp + navigationClearance)
                         .onSizeChanged { bottomToolbarHeightPx = it.height },
                     onCancel = { viewModel.clearSelection() },
                     onAddToProfiles = if (assignmentState.profiles.isNotEmpty() && !assignmentState.profilesLoadFailed) {
@@ -582,7 +573,7 @@ fun FreezerScreen(
                     ),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = 16.dp, end = 16.dp)
+                        .padding(bottom = 16.dp + navigationClearance, end = 16.dp)
                         .onSizeChanged { bottomToolbarHeightPx = it.height },
                     content = {
                         val iconButtonColors = IconButtonDefaults.iconButtonColors(
@@ -783,6 +774,7 @@ fun FreezerScreen(
             hasPrivilege = hasPrivilege,
             showImportDisabledApps = disabledAppsNotInFreezer.isNotEmpty(),
             appListType = state.appListType,
+            combinedAppListsEnabled = state.combinedAppListsEnabled,
             showLauncherPinActions = !state.disableShortcuts && viewModel.isPinSupported(),
             onToggleView = viewModel::toggleGridMode,
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,

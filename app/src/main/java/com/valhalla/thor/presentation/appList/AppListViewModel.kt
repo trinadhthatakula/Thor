@@ -95,6 +95,7 @@ data class AppListUiState(
     val suspendedOnly: Boolean = false,
     // Filter State
     val appListType: AppListType = AppListType.USER,
+    val combinedAppListsEnabled: Boolean = false,
     val filterType: FilterType = FilterType.Source,
     val selectedFilter: String = "All",
     val searchQuery: String = "",
@@ -234,6 +235,7 @@ class AppListViewModel(
 
     init {
         loadApps(deferForTransition = true)
+        observeCombinedAppLists()
         observeSizeSort()
         observeFreezerMembership()
         observePermissionFilter()
@@ -936,9 +938,25 @@ class AppListViewModel(
         _rawState.update { it.copy(selectedAppDetails = null) }
     }
 
+    private fun observeCombinedAppLists() {
+        viewModelScope.launch {
+            preferenceRepository.userPreferences
+                .map { it.combinedAppListsEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    _rawState.update {
+                        it.copy(
+                            combinedAppListsEnabled = enabled,
+                            appListType = it.appListType.forCombinedLists(enabled),
+                        )
+                    }
+                }
+        }
+    }
+
     fun updateListType(type: AppListType) {
-        // The tab is session-only; its saved filter is restored by the preference combine.
-        _rawState.update { it.copy(appListType = type) }
+        // The source selection is session-only; its saved filter is restored by the combine.
+        _rawState.update { it.copy(appListType = type.forCombinedLists(it.combinedAppListsEnabled)) }
     }
 
     /**
@@ -950,9 +968,10 @@ class AppListViewModel(
      * The destination's category and selection are saved together; the other tab is untouched.
      */
     fun showAppsFromInstaller(type: AppListType, installerPackageName: String) {
-        _rawState.update { it.copy(appListType = type) }
+        val destination = type.forCombinedLists(_rawState.value.combinedAppListsEnabled)
+        _rawState.update { it.copy(appListType = destination) }
         viewModelScope.launch {
-            preferenceRepository.updateAppFilter(type, FilterType.Source, installerPackageName)
+            preferenceRepository.updateAppFilter(destination, FilterType.Source, installerPackageName)
         }
     }
 
@@ -1067,7 +1086,8 @@ class AppListViewModel(
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
         val rawList = when {
-            state.suspendedOnly -> state.allUserApps + state.allSystemApps
+            state.suspendedOnly || state.appListType == AppListType.ALL ->
+                state.allUserApps + state.allSystemApps
             state.appListType == AppListType.USER -> state.allUserApps
             else -> state.allSystemApps
         }

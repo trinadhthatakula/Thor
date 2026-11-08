@@ -109,6 +109,16 @@ enum class SettingsRowId(
         R.string.customization_fonts,
         R.string.customization_fonts_desc,
     ),
+    COMBINED_APP_LISTS(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.combined_app_lists,
+        R.string.combined_app_lists_desc,
+    ),
+    NAVIGATION_BAR(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.customization_navigation,
+        R.string.customization_navigation_desc,
+    ),
     APP_INFO_ACTIONS(
         SettingsCategory.CUSTOMIZATION,
         R.string.customization_app_info_actions,

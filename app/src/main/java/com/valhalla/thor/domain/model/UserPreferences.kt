@@ -9,9 +9,12 @@ data class UserPreferences(
     val appSortOrder: SortOrder = SortOrder.ASCENDING,
     val userAppFilter: AppFilterPreferences = AppFilterPreferences(),
     val systemAppFilter: AppFilterPreferences = AppFilterPreferences(),
+    val combinedAppListsEnabled: Boolean = false,
+    val combinedAppFilter: AppFilterPreferences = AppFilterPreferences(),
 
     // Navigation — the tab Thor opens on at launch
     val defaultTab: DefaultTab = DefaultTab.HOME,
+    val navigationBar: NavigationBarPreferences = NavigationBarPreferences(),
 
     // Home Screen Config
     val showReinstallAllCard: Boolean = true,
@@ -142,6 +145,7 @@ data class UserPreferences(
     fun appFilterFor(type: AppListType): AppFilterPreferences = when (type) {
         AppListType.USER -> userAppFilter
         AppListType.SYSTEM -> systemAppFilter
+        AppListType.ALL -> combinedAppFilter
     }.normalizedFor(type)
 
     fun multiAppActionsOrder(layout: MultiAppActionLayout): List<MultiAppActionId> = when (layout) {

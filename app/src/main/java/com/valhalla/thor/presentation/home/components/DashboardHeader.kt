@@ -103,16 +103,16 @@ fun DashboardHeader(
 
             // App Type Switcher
             ConnectedButtonGroup(
-                items = AppListType.entries.map { type ->
+                items = AppListType.individualTypes.map { type ->
                     ConnectedButtonGroupItem.Icon(
-                        icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
+                        icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.person else R.drawable.android),
                         contentDescription = stringResource(
                             if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
                         )
                     )
                 },
-                selectedIndex = AppListType.entries.indexOf(selectedType),
-                onItemSelected = { onTypeChanged(AppListType.entries[it]) },
+                selectedIndex = AppListType.individualTypes.indexOf(selectedType),
+                onItemSelected = { onTypeChanged(AppListType.individualTypes[it]) },
                 modifier = Modifier.width(IntrinsicSize.Max)
             )
         }

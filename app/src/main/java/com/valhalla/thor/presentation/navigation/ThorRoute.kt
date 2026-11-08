@@ -84,5 +84,8 @@ sealed interface ThorRoute : NavKey {
     data object FreezerMultiActionsCustomization : ThorRoute
 
     @Serializable
+    data object NavigationCustomization : ThorRoute
+
+    @Serializable
     data object BackupRestoreHub : ThorRoute
 }

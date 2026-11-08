@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.settings
 
+import com.valhalla.thor.presentation.navigation.LocalFloatingNavigationClearance
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -144,7 +146,9 @@ fun SettingsScreen(
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
-            .padding(top = 64.dp, bottom = 120.dp)
+            .padding(top = 64.dp, bottom = LocalFloatingNavigationClearance.current.let {
+                if (it > 0.dp) it + 16.dp else 120.dp
+            })
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),

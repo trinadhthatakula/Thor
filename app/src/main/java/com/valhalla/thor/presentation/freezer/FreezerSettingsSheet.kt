@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
+import com.valhalla.thor.presentation.widgets.AppTypeFilter
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FreezerMode
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -59,6 +60,7 @@ fun FreezerSettingsSheet(
     hasPrivilege: Boolean,
     showImportDisabledApps: Boolean,
     appListType: AppListType,
+    combinedAppListsEnabled: Boolean = false,
     showLauncherPinActions: Boolean = false,
     onToggleView: () -> Unit,
     onToggleAutoFreeze: (Boolean) -> Unit,
@@ -174,19 +176,11 @@ fun FreezerSettingsSheet(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
-                ConnectedButtonGroup(
-                    items = AppListType.entries.map { type ->
-                        ConnectedButtonGroupItem.Icon(
-                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            contentDescription = stringResource(
-                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
-                            )
-                        )
-                    },
-                    selectedIndex = AppListType.entries.indexOf(appListType),
-                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
-                    modifier = Modifier.width(IntrinsicSize.Max)
-                )
+                AppTypeFilter(
+                        selection = appListType,
+                        onSelectionChanged = onListTypeChanged,
+                        multiSelectEnabled = combinedAppListsEnabled,
+                    )
             }
 
             Spacer(Modifier.height(24.dp))

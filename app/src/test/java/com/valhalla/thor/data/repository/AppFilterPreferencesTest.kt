@@ -46,7 +46,7 @@ class AppFilterPreferencesTest {
                 Keys.SELECTED_FILTER to selection,
             ).toUserPreferences()
 
-            for (type in AppListType.entries) {
+            for (type in AppListType.individualTypes) {
                 assertEquals(AppFilterPreferences(filterType, selection), restored.appFilterFor(type))
             }
         }
@@ -54,7 +54,7 @@ class AppFilterPreferencesTest {
 
     @Test
     fun `editing one inherited profile never changes the untouched profile or legacy fallback`() = runTest {
-        for (type in AppListType.entries) {
+        for (type in AppListType.individualTypes) {
             val store = RecordingDataStore(
                 preferencesOf(
                     Keys.FILTER_TYPE to "STATE",
@@ -62,7 +62,7 @@ class AppFilterPreferencesTest {
                     Keys.THEME_MODE to ThemeMode.DARK.name,
                 ),
             )
-            val other = AppListType.entries.single { it != type }
+            val other = AppListType.individualTypes.single { it != type }
 
             store.writeAppFilter(type, FilterType.Permission, "android.permission-group.CAMERA")
 
@@ -239,14 +239,54 @@ class AppFilterPreferencesTest {
         }
     }
 
+    @Test
+    fun `combined view starts unfiltered after upgrade and saves its own recommendation`() = runTest {
+        val store = RecordingDataStore(preferencesOf(
+            Keys.FILTER_TYPE to "STATE",
+            Keys.SELECTED_FILTER to "Frozen",
+            Keys.SYSTEM_FILTER_TYPE to "UAD",
+            Keys.SYSTEM_SELECTED_FILTER to "Unsafe",
+        ))
+        assertEquals(AppFilterPreferences(), store.current.toUserPreferences().combinedAppFilter)
+        store.writeAppFilter(AppListType.ALL, FilterType.Uad, "Recommended")
+        val restored = store.current.toUserPreferences()
+        assertEquals(AppFilterPreferences(FilterType.Uad, "Recommended"), restored.combinedAppFilter)
+        assertEquals(AppFilterPreferences(FilterType.Uad, "Unsafe"), restored.systemAppFilter)
+        assertEquals(AppFilterPreferences(FilterType.State, "Frozen"), restored.userAppFilter)
+    }
+
+    @Test
+    fun `combined app lists default off and opt in survives restore without changing filters`() {
+        assertEquals(false, emptyPreferences().toUserPreferences().combinedAppListsEnabled)
+        val restored = preferencesOf(
+            Keys.COMBINED_APP_LISTS_ENABLED to true,
+            Keys.USER_FILTER_TYPE to "STATE",
+            Keys.USER_SELECTED_FILTER to "Frozen",
+            Keys.SYSTEM_FILTER_TYPE to "UAD",
+            Keys.SYSTEM_SELECTED_FILTER to "Recommended",
+            Keys.COMBINED_FILTER_TYPE to "STATE",
+            Keys.COMBINED_SELECTED_FILTER to "Active",
+        )
+        assertEquals(true, restored.toUserPreferences().combinedAppListsEnabled)
+        val disabled = restored.toMutablePreferences().apply {
+            this[Keys.COMBINED_APP_LISTS_ENABLED] = false
+        }.toUserPreferences()
+        assertEquals(false, disabled.combinedAppListsEnabled)
+        assertEquals("Frozen", disabled.userAppFilter.selectedFilter)
+        assertEquals("Recommended", disabled.systemAppFilter.selectedFilter)
+        assertEquals("Active", disabled.combinedAppFilter.selectedFilter)
+    }
+
     private fun typeKey(type: AppListType): Preferences.Key<String> = when (type) {
         AppListType.USER -> Keys.USER_FILTER_TYPE
         AppListType.SYSTEM -> Keys.SYSTEM_FILTER_TYPE
+        AppListType.ALL -> Keys.COMBINED_FILTER_TYPE
     }
 
     private fun selectionKey(type: AppListType): Preferences.Key<String> = when (type) {
         AppListType.USER -> Keys.USER_SELECTED_FILTER
         AppListType.SYSTEM -> Keys.SYSTEM_SELECTED_FILTER
+        AppListType.ALL -> Keys.COMBINED_SELECTED_FILTER
     }
 
     private class RecordingDataStore(initial: Preferences = emptyPreferences()) : DataStore<Preferences> {

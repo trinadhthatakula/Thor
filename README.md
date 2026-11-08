@@ -35,7 +35,7 @@
 
 ### Apps and installation
 
-- Room-cached app lists with search, sorting, source, state and permission filters, split/frozen/suspended/hidden indicators, and a saved list or grid layout. System apps also offer UAD recommendation filters: Recommended, Advanced, Expert, Unsafe, and Unknown. User and System tabs remember their filter choices separately. Long Apps and Freezer lists/grids have a draggable scrollbar with a visible-range bubble. Export the current list to CSV.
+- Room-cached app lists with search, sorting, source, state and permission filters, split/frozen/suspended/hidden indicators, and a saved list or grid layout. System apps also offer UAD recommendation filters: Recommended, Advanced, Expert, Unsafe, and Unknown. Apps and Freezer start with User apps and select one source at a time. Enable Combined app lists in Settings → Customization to select User and System together. User apps carry a User app label in list rows, while UAD recommendations apply only to system apps. User, System, and combined lists remember their filter choices separately. Long Apps and Freezer lists/grids have a draggable scrollbar with a visible-range bubble. Export the current list to CSV.
 - App Info quick actions can be reordered or hidden. Tap an app icon to launch it, or long-press it for Android's app settings.
 - Install APK, APKM, APKS, and XAPK packages (including supported OBB expansion assets) through Root, Shizuku, Dhizuku, or Android's installer. Eligible Root/Shizuku installs of older-target APKs require explicit consent unless the separate saved override is enabled; install-time runtime-permission grants are opt-in.
 - Per-app permission management can grant or revoke supported runtime permissions. Its **App Ops** tab uses Root or Shizuku to show the device's operations, with Relevant, Changed, and All filters, search, package/UID modes, and a separate reset to the platform default. Changes are read back before confirmation; shared-UID edits warn about affected apps. App Ops modes remain separate from permission grants. See the [scope and validation notes](docs/superpowers/plans/2026-09-24-app-ops-manager.md).
@@ -62,6 +62,7 @@
 
 - Adaptive Home, Settings, App list, and detail layouts for phones, tablets, and foldables, including a navigation rail and landscape detail panes.
 - Material 3 themes (dark, light, system, AMOLED, and Asgardian), optional dynamic colors, and [font presets](docs/font-presets.md) that apply across Thor and its external installer.
+- Settings → Customization → Navigation bar opens a dedicated page with a live preview of docked or floating navigation, expanding/segmented/standard styles, labels, icons, shapes, and spacing. Tap Apply to save; Cancel or Back discards the preview. The same preferences customize the adaptive navigation rail.
 - Customize App Info actions and, separately, the App list and Freezer multi-app action toolbars. Reorder, hide, or restore their actions.
 - Biometric lock for Thor, with screenshot/recording protection and a hidden Recents preview while locked.
 - Nine app languages: English, Spanish, French, Arabic, Simplified Chinese, Japanese, European Portuguese, Brazilian Portuguese, and Polish, with an in-app language switcher.

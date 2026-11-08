@@ -700,7 +700,7 @@
     <string name="settings_summary_restore_interrupted">有一次恢复未完成</string>
     <string name="settings_summary_backup">恢复存档，或更改密码短语</string>
     <string name="settings_summary_unprivileged">需要 Root、Shizuku 或 Dhizuku</string>
-    <string name="settings_summary_customization">字体与操作布局</string>
+    <string name="settings_summary_customization">字体、导航和操作布局</string>
 
     <string name="settings_category_customization">自定义</string>
     <string name="customization_fonts">字体</string>
@@ -974,4 +974,42 @@
     <string name="root_refresh_busy">正在等待 root 操作完成。新的 root 操作已暂停。</string>
     <string name="root_refresh_timed_out">root 权限检查超时。新的 root 操作已暂停。</string>
     <string name="root_refresh_failed">无法检查 root 权限。新的 root 操作已暂停。</string>
+    <string name="user_app">用户应用</string>
+    <string name="uad_filter_system_apps_only">UAD 建议仅适用于系统应用。</string>
+
+    <!-- Navigation customization -->
+    <string name="customization_navigation">导航栏</string>
+    <string name="customization_navigation_desc">自定义位置、样式、标签和形状</string>
+    <string name="navigation_preview_hint">点击预览可体验各个页面。点击“应用”后保存更改。</string>
+    <string name="navigation_placement">位置</string>
+    <string name="navigation_docked">固定</string>
+    <string name="navigation_floating">悬浮</string>
+    <string name="navigation_appearance">样式</string>
+    <string name="navigation_expanding">展开式</string>
+    <string name="navigation_segmented">分段式</string>
+    <string name="navigation_standard">标准</string>
+    <string name="navigation_labels">标签</string>
+    <string name="navigation_automatic">自动</string>
+    <string name="navigation_selected">选中项</string>
+    <string name="navigation_all">全部</string>
+    <string name="navigation_hidden">隐藏</string>
+    <string name="navigation_icons">显示图标</string>
+    <string name="navigation_text_only_hint">隐藏图标时标签仍然可见。</string>
+    <string name="navigation_container_shape">导航栏形状</string>
+    <string name="navigation_indicator_shape">选中项形状</string>
+    <string name="navigation_default">默认</string>
+    <string name="navigation_round">圆形</string>
+    <string name="navigation_soft">圆角</string>
+    <string name="navigation_square">方形</string>
+    <string name="navigation_spacing">项目间距</string>
+    <string name="navigation_padding">内边距</string>
+    <string name="navigation_margin">悬浮边距</string>
+    <string name="navigation_elevation">高度</string>
+    <string name="navigation_save_failed">无法保存导航样式。请再次点击“应用”。</string>
+    <string name="navigation_reset">重置</string>
+    <string name="navigation_apply">应用</string>
+    <string name="navigation_saving">正在保存…</string>
+    <string name="navigation_dp">%1$d dp</string>
+    <string name="combined_app_lists">合并应用列表</string>
+    <string name="combined_app_lists_desc">允许在应用和冻结器中同时选择用户应用和系统应用</string>
 </resources>
