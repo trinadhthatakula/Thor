@@ -160,6 +160,7 @@ private fun NavigationControls(draft: NavigationBarPreferences, enabled: Boolean
     NavigationSlider(R.string.navigation_elevation, draft.elevation, 0..16, enabled && draft.placement == NavigationPlacement.FLOATING) { onDraftChange(draft.copy(elevation = it)) }
 }
 
+/** Presents a labeled single-choice group that scrolls horizontally when its options do not fit. */
 @Composable
 private fun NavigationChoice(@StringRes title: Int, options: List<Int>, selected: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
     val groupLabel = stringResource(title)
@@ -179,6 +180,7 @@ private fun NavigationChoice(@StringRes title: Int, options: List<Int>, selected
     }
 }
 
+/** Edits whole-dp values within an inclusive range and displays the localized current value. */
 @Composable
 private fun NavigationSlider(@StringRes label: Int, value: Int, range: IntRange, enabled: Boolean, onChange: (Int) -> Unit) {
     AsgardLabeledSlider(

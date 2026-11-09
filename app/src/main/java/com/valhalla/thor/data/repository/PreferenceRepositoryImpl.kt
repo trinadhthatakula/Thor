@@ -286,6 +286,7 @@ class PreferenceRepositoryImpl(
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.SHOW_REINSTALL_ALL] = isVisible }
     }
 
+    /** Persists the multiselect opt-in without changing the saved source-specific filters. */
     override suspend fun setCombinedAppListsEnabled(enabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.COMBINED_APP_LISTS_ENABLED] = enabled }
     }
@@ -294,6 +295,7 @@ class PreferenceRepositoryImpl(
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.DEFAULT_TAB] = tab.name }
     }
 
+    /** Saves the normalized style atomically and reports whether the guarded write succeeded. */
     override suspend fun setNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean =
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             it[Keys.NAVIGATION_BAR] = NavigationPreferencesCodec.encode(preferences)

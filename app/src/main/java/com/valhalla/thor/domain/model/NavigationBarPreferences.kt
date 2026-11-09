@@ -28,6 +28,7 @@ data class NavigationBarPreferences(
     val effectiveLabels: NavigationLabels
         get() = if (showIcons) labels else NavigationLabels.ALWAYS
 
+    /** Clamps imported sizes to the editor's ranges while preserving appearance and label choices. */
     fun normalized(): NavigationBarPreferences = copy(
         spacing = spacing.coerceIn(0, 16),
         floatingMargin = floatingMargin.coerceIn(0, 32),

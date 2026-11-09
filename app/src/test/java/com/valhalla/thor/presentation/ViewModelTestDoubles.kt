@@ -704,6 +704,7 @@ class FakePreferenceRepository(
         write { it.copy(showReinstallAllCard = isVisible) }
     }
 
+    /** Models opt-in persistence through the same failure simulation as other preference writes. */
     override suspend fun setCombinedAppListsEnabled(enabled: Boolean) {
         write { it.copy(combinedAppListsEnabled = enabled) }
     }
@@ -712,6 +713,7 @@ class FakePreferenceRepository(
         write { it.copy(defaultTab = tab) }
     }
 
+    /** Normalizes successful style writes and returns false without changing state on failure. */
     override suspend fun setNavigationBarPreferences(preferences: com.valhalla.thor.domain.model.NavigationBarPreferences): Boolean =
         write { it.copy(navigationBar = preferences.normalized()) }
 

@@ -938,6 +938,7 @@ class AppListViewModel(
         _rawState.update { it.copy(selectedAppDetails = null) }
     }
 
+    /** Tracks the opt-in, returning a combined view to User when multiselect is disabled. */
     private fun observeCombinedAppLists() {
         viewModelScope.launch {
             preferenceRepository.userPreferences
@@ -954,6 +955,7 @@ class AppListViewModel(
         }
     }
 
+    /** Changes the session source within the opt-in policy and restores its saved filter profile. */
     fun updateListType(type: AppListType) {
         // The source selection is session-only; its saved filter is restored by the combine.
         _rawState.update { it.copy(appListType = type.forCombinedLists(it.combinedAppListsEnabled)) }

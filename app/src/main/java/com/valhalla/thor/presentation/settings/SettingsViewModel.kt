@@ -241,6 +241,7 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
     }
 
+    /** Saves the combined-list opt-in asynchronously through the preference repository. */
     fun setCombinedAppListsEnabled(enabled: Boolean) {
         viewModelScope.launch { preferenceRepository.setCombinedAppListsEnabled(enabled) }
     }
@@ -249,6 +250,7 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setDefaultTab(tab) }
     }
 
+    /** Reports the style write result so the editor can retain a failed draft for retry. */
     suspend fun applyNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean =
         preferenceRepository.setNavigationBarPreferences(preferences)
 
