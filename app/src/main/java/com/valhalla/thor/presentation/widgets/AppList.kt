@@ -1209,8 +1209,8 @@ private fun EmptyStatePlaceholder(
 
 private enum class SheetTab { FILTERS, SORT }
 
-@OptIn(ExperimentalMaterial3Api::class)
 /** Edits source, category and sort choices; fixed-state lists keep their existing source/category. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppFilterSheet(
     onDismiss: () -> Unit,

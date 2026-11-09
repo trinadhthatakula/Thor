@@ -69,6 +69,7 @@ interface PreferenceRepository {
     fun acknowledgeSettingsWriteFailure()
 
     // --- App List ---
+    /** Enables combined source selection without replacing any saved filter profile. */
     suspend fun setCombinedAppListsEnabled(enabled: Boolean)
     suspend fun updateAppSort(sortBy: SortBy)
     suspend fun updateAppSortOrder(sortOrder: SortOrder)

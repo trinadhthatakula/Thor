@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 /** Unknown future fields are tolerated; malformed or incompatible snapshots use safe defaults. */
 internal object NavigationPreferencesCodec {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    /** Serializes the complete style after clamping sizes to the supported ranges. */
     fun encode(value: NavigationBarPreferences): String = json.encodeToString(value.normalized())
     /** Restores and clamps a saved style, using defaults for absent or invalid snapshots. */
     fun decode(value: String?): NavigationBarPreferences = value?.let {

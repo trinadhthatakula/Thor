@@ -17,6 +17,7 @@ import com.valhalla.asgard.navigation.*
 import com.valhalla.thor.domain.model.*
 import com.valhalla.thor.presentation.home.AppDestinations
 
+/** Builds the editor's preview destinations with localized labels and their selected icons. */
 @Composable
 internal fun thorNavigationItems(): List<AsgardNavItem> = AppDestinations.entries.map {
     AsgardNavItem(
