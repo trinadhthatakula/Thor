@@ -1,0 +1,7 @@
+• 🧭 Make the navigation bar yours: choose a floating or docked style, customize icons, labels and shapes, and preview changes before applying.
+
+• 📱 See user and system apps together in Apps and Freezer. Enable Combined app lists in Settings → Customization to select both.
+
+• 🛡️ User apps are clearly labeled, while debloat recommendations apply to system apps.
+
+• ✨ Floating navigation keeps lists and controls within reach, with smoother transitions between tabs.
