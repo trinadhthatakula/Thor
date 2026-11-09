@@ -12,8 +12,9 @@ All three screens use the person icon for User apps and Asgard's primary/onPrima
 
 ## Published integration
 
-Asgard 2.1.0 includes the overload and is now pinned in Thor. Normal builds resolve it from
-Maven Central, without a composite build. The artifact requires compile SDK 37.2.
+Thor pins Asgard 2.1.1, which includes the multiselect overload introduced in 2.1.0 and the
+navigation-motion fixes. Normal builds resolve it from Maven Central, without a composite build.
+The artifact requires compile SDK 37.2.
 For future cross-repository development, the optional source override remains available:
 
 ```sh
@@ -28,8 +29,9 @@ version, because Gradle requires matching AGP versions across included Android b
 ## Published-dependency validation, 2026-11-09
 
 `./gradlew test lintFossDebug lintStoreRelease` and debug/test APK assembly passed without
-`-PasgardDir`. All 3,757 unit tests passed per Foss/Store flavor; lint reported zero errors and
-warnings. All nine `AppListUadFilterTest` emulator checks passed against the published dependency,
+`-PasgardDir`, using the published Asgard 2.1.1 artifact. All 3,757 unit tests passed per Foss/Store
+flavor; lint reported zero errors and warnings. All nine `AppListUadFilterTest` emulator checks
+passed against the published dependency,
 alongside the nine navigation-editor and six navigation-scaffold checks.
 
 The library allows empty selection. Thor keeps at least one source selected by rejecting an

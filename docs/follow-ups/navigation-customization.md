@@ -1,6 +1,6 @@
 # Navigation customization
 
-Asgard 2.1.0 is consumed from Maven Central. It requires compile SDK 37.2; target and minimum
+Asgard 2.1.1 is consumed from Maven Central. It requires compile SDK 37.2; target and minimum
 SDK policy remain independent. The existing issue #589 multiselect controls use that artifact.
 
 Settings → Customization → Navigation bar opens a dedicated Navigation 3 page with a back arrow,
@@ -91,10 +91,9 @@ APK was installed on the connected physical device:
 ./gradlew -PasgardDir=../Asgard -PasgardAgpVersion=9.6.0-alpha02 :app:assembleFossDebug :app:assembleFossDebugAndroidTest
 ```
 
-The published dependency remains 2.1.0. An Asgard patch release and a Thor dependency update are
-required for ordinary Maven Central builds to receive this fix. Keep the Thor PR in draft until
-that dependency update has been validated. The motion fix is tracked in
-[Asgard #10](https://github.com/trinadhthatakula/Asgard/pull/10).
+The motion fix was merged in [Asgard #10](https://github.com/trinadhthatakula/Asgard/pull/10)
+and published with the [2.1.1 release](https://github.com/trinadhthatakula/Asgard/pull/11).
+Thor now pins that published version, so ordinary Maven Central builds include the fix.
 
 Floating placement integration, verified on 2026-11-09:
 
@@ -132,3 +131,14 @@ Published-dependency PR validation, 2026-11-09:
 - Reviewer screenshots are retained in `docs/assets/navigation-customization/`. They show the
   local Asgard motion-patch integration; the published 2.1.0 checks above do not establish that
   the unpublished animation fix is included in a normal Thor build.
+
+Published 2.1.1 integration, verified on 2026-11-09:
+
+- Dependency insight selected `asgard:2.1.1` and `asgard-android:2.1.1` from Maven Central,
+  without a local source override. The resolved Android AAR matches Central's SHA256 checksum.
+- `./gradlew test lintFossDebug lintStoreRelease` passed with 3,757 unit tests per Foss/Store
+  flavor and zero lint errors/warnings. Debug and Android-test APK assembly also passed.
+- All 24 focused Android 17 emulator tests passed against the published artifact: six navigation
+  scaffold tests, nine customization-editor tests and nine app/UAD filter tests.
+- Both minified Foss and Store release APKs assembled successfully. Thor's version remains
+  1.97.3 / 1973. The published dependency now includes Asgard's navigation-motion fixes.
