@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.home
 
+import com.valhalla.thor.presentation.navigation.LocalFloatingNavigationClearance
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -78,6 +80,7 @@ import com.valhalla.thor.presentation.theme.greenLight
 import com.valhalla.thor.presentation.widgets.AppIcon
 import org.koin.androidx.compose.koinViewModel
 
+/** Renders source-specific dashboard data and routes tile actions to their owning workflows. */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun HomeScreen(
@@ -140,10 +143,8 @@ fun HomeScreen(
         showExtensions = state.showExtensionsTile,
     ).isNotEmpty()
 
-    // The bottom inset (nav-bar height + system navigation-bar insets) is already applied by
-    // MainScreen, which hosts this screen inside Scaffold's Box(Modifier.padding(innerPadding)).
-    // Adding another 80.dp + navigationBars here double-counted it and left a large empty gap
-    // at the bottom of the scroll content, so this screen owns no bottom inset of its own.
+    // Docked navigation is outside this viewport. Floating navigation overlays it; only the
+    // scroll-content tail gets clearance so the final card can scroll above the bar.
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -155,6 +156,7 @@ fun HomeScreen(
                 .then(if (isExpanded) Modifier.widthIn(max = 1200.dp) else Modifier)
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
+                .padding(bottom = LocalFloatingNavigationClearance.current)
         ) {
         // 1. Header (full width always)
         DashboardHeader(

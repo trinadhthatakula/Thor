@@ -712,7 +712,7 @@
     <string name="settings_summary_restore_interrupted">Una restauración no terminó</string>
     <string name="settings_summary_backup">Restaurar un archivo o cambiar la frase de contraseña</string>
     <string name="settings_summary_unprivileged">Requiere Root, Shizuku o Dhizuku</string>
-    <string name="settings_summary_customization">Fuentes y diseños de acciones</string>
+    <string name="settings_summary_customization">Fuentes, navegación y diseño de acciones</string>
 
     <string name="settings_category_customization">Personalización</string>
     <string name="customization_fonts">Fuentes</string>
@@ -997,4 +997,42 @@
     <string name="root_refresh_busy">Esperando a que terminen las operaciones root. Las nuevas acciones root están en pausa.</string>
     <string name="root_refresh_timed_out">La comprobación de root agotó el tiempo de espera. Las nuevas acciones root están en pausa.</string>
     <string name="root_refresh_failed">No se pudo comprobar el acceso root. Las nuevas acciones root están en pausa.</string>
+    <string name="user_app">App de usuario</string>
+    <string name="uad_filter_system_apps_only">Las recomendaciones de UAD solo se aplican a las apps del sistema.</string>
+
+    <!-- Navigation customization -->
+    <string name="customization_navigation">Barra de navegación</string>
+    <string name="customization_navigation_desc">Personaliza posición, estilo, etiquetas y formas</string>
+    <string name="navigation_preview_hint">Toca la vista previa para probar cada destino. Los cambios se guardan al tocar Aplicar.</string>
+    <string name="navigation_placement">Posición</string>
+    <string name="navigation_docked">Anclada</string>
+    <string name="navigation_floating">Flotante</string>
+    <string name="navigation_appearance">Estilo</string>
+    <string name="navigation_expanding">Expandible</string>
+    <string name="navigation_segmented">Segmentado</string>
+    <string name="navigation_standard">Estándar</string>
+    <string name="navigation_labels">Etiquetas</string>
+    <string name="navigation_automatic">Auto</string>
+    <string name="navigation_selected">Selección</string>
+    <string name="navigation_all">Todas</string>
+    <string name="navigation_hidden">Ocultas</string>
+    <string name="navigation_icons">Mostrar iconos</string>
+    <string name="navigation_text_only_hint">Las etiquetas siguen visibles al ocultar los iconos.</string>
+    <string name="navigation_container_shape">Forma de la barra</string>
+    <string name="navigation_indicator_shape">Forma de selección</string>
+    <string name="navigation_default">Predeterminada</string>
+    <string name="navigation_round">Redonda</string>
+    <string name="navigation_soft">Suave</string>
+    <string name="navigation_square">Cuadrada</string>
+    <string name="navigation_spacing">Espacio entre elementos</string>
+    <string name="navigation_padding">Margen interior</string>
+    <string name="navigation_margin">Margen flotante</string>
+    <string name="navigation_elevation">Elevación</string>
+    <string name="navigation_save_failed">No se pudo guardar el estilo de navegación. Intenta Aplicar de nuevo.</string>
+    <string name="navigation_reset">Restablecer</string>
+    <string name="navigation_apply">Aplicar</string>
+    <string name="navigation_saving">Guardando…</string>
+    <string name="navigation_dp">%1$d dp</string>
+    <string name="combined_app_lists">Listas de aplicaciones combinadas</string>
+    <string name="combined_app_lists_desc">Permitir seleccionar Usuario y Sistema a la vez en Aplicaciones y Congelador</string>
 </resources>

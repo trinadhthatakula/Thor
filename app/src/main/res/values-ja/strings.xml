@@ -837,4 +837,42 @@
     <string name="root_refresh_busy">root の処理が終わるのを待っています。新しい root 操作は一時停止中です。</string>
     <string name="root_refresh_timed_out">root の確認がタイムアウトしました。新しい root 操作は一時停止中です。</string>
     <string name="root_refresh_failed">root アクセスを確認できませんでした。新しい root 操作は一時停止中です。</string>
+    <string name="user_app">ユーザーアプリ</string>
+    <string name="uad_filter_system_apps_only">UAD の推奨はシステムアプリにのみ適用されます。</string>
+
+    <!-- Navigation customization -->
+    <string name="customization_navigation">ナビゲーションバー</string>
+    <string name="customization_navigation_desc">配置、スタイル、ラベル、形状をカスタマイズ</string>
+    <string name="navigation_preview_hint">プレビューをタップして各画面を試せます。「適用」をタップすると変更が保存されます。</string>
+    <string name="navigation_placement">配置</string>
+    <string name="navigation_docked">固定</string>
+    <string name="navigation_floating">フローティング</string>
+    <string name="navigation_appearance">スタイル</string>
+    <string name="navigation_expanding">拡張</string>
+    <string name="navigation_segmented">セグメント</string>
+    <string name="navigation_standard">標準</string>
+    <string name="navigation_labels">ラベル</string>
+    <string name="navigation_automatic">自動</string>
+    <string name="navigation_selected">選択中</string>
+    <string name="navigation_all">すべて</string>
+    <string name="navigation_hidden">非表示</string>
+    <string name="navigation_icons">アイコンを表示</string>
+    <string name="navigation_text_only_hint">アイコンを非表示にしてもラベルは表示されます。</string>
+    <string name="navigation_container_shape">バーの形状</string>
+    <string name="navigation_indicator_shape">選択部分の形状</string>
+    <string name="navigation_default">既定</string>
+    <string name="navigation_round">丸形</string>
+    <string name="navigation_soft">角丸</string>
+    <string name="navigation_square">四角</string>
+    <string name="navigation_spacing">項目の間隔</string>
+    <string name="navigation_padding">内側の余白</string>
+    <string name="navigation_margin">外側の余白</string>
+    <string name="navigation_elevation">高さ</string>
+    <string name="navigation_save_failed">ナビゲーションのスタイルを保存できませんでした。もう一度「適用」を試してください。</string>
+    <string name="navigation_reset">リセット</string>
+    <string name="navigation_apply">適用</string>
+    <string name="navigation_saving">保存中…</string>
+    <string name="navigation_dp">%1$d dp</string>
+    <string name="combined_app_lists">アプリ一覧の統合</string>
+    <string name="combined_app_lists_desc">アプリとフリーザーでユーザーアプリとシステムアプリを同時に選択できるようにします</string>
 </resources>

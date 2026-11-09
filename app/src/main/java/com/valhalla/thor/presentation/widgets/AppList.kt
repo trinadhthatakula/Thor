@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.widgets
 
+import com.valhalla.thor.presentation.navigation.LocalFloatingNavigationClearance
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -109,6 +111,7 @@ import com.valhalla.asgard.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 
+/** Displays app sources, search/filter controls and bulk selection, reporting edits to its caller. */
 @Composable
 fun AppList(
     modifier: Modifier = Modifier,
@@ -118,6 +121,7 @@ fun AppList(
     selectedFilter: String?,
     filterType: FilterType = FilterType.Source,
     fixedStateFilter: Boolean = false,
+    combinedAppListsEnabled: Boolean = false,
     sortBy: SortBy = SortBy.NAME,
     sortOrder: SortOrder = SortOrder.ASCENDING,
     searchQuery: String = "",
@@ -154,6 +158,7 @@ fun AppList(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
+    val navigationClearance = LocalFloatingNavigationClearance.current
     // 1. Local State
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
     // Not rememberSaveable: AppInfo is not Parcelable/Serializable, so saving a non-empty
@@ -168,7 +173,7 @@ fun AppList(
         multiSelection.mapTo(HashSet()) { it.packageName }
     }
     val isMultiSelectMode = multiSelection.isNotEmpty()
-    val isUadFilter = appListType == AppListType.SYSTEM && filterType == FilterType.Uad && !fixedStateFilter
+    val isUadFilter = appListType.includesSystem && filterType == FilterType.Uad && !fixedStateFilter
     val isSpecificUadFilter = isUadFilter && selectedFilter != "All"
 
     // 2. Logic
@@ -186,6 +191,7 @@ fun AppList(
     val scrollbarBottomInset = if (isMultiSelectMode) {
         maxOf(120.dp, with(LocalDensity.current) { multiSelectToolbarHeightPx.toDp() }) + 40.dp
     } else 0.dp
+    val totalScrollbarBottomInset = scrollbarBottomInset + navigationClearance
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
 
@@ -215,7 +221,7 @@ fun AppList(
             }
 
             // System App Warning
-            if (appListType == AppListType.SYSTEM && !isMultiSelectMode) {
+            if (appListType.includesSystem && !isMultiSelectMode) {
                 Text(
                     text = stringResource(R.string.system_apps_warning),
                     style = MaterialTheme.typography.labelSmall,
@@ -229,7 +235,7 @@ fun AppList(
             // Headers (Control Bar)
             this@Column.AnimatedVisibility(
                 visible = !isMultiSelectMode && !fixedStateFilter &&
-                    (filterType != FilterType.Uad || appListType == AppListType.SYSTEM),
+                    (filterType != FilterType.Uad || appListType.includesSystem),
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
@@ -304,7 +310,7 @@ fun AppList(
                     filterType = filterType,
                     appListType = appListType,
                     searchQuery = searchQuery,
-                    scrollbarBottomInset = scrollbarBottomInset,
+                    scrollbarBottomInset = totalScrollbarBottomInset,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope
                 )
@@ -320,6 +326,7 @@ fun AppList(
                 onAddToProfiles = onAddToProfiles?.let { assign -> { assign(multiSelection) } },
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 32.dp)
+                    .padding(bottom = navigationClearance)
                     .align(Alignment.BottomEnd)
                     .onSizeChanged { multiSelectToolbarHeightPx = it.height },
                 isRoot = isRoot,
@@ -339,6 +346,7 @@ fun AppList(
             onDismiss = { showFilterSheet = false },
             filterType = filterType,
             fixedStateFilter = fixedStateFilter,
+            combinedAppListsEnabled = combinedAppListsEnabled,
             sortBy = sortBy,
             sortOrder = sortOrder,
             isGrid = isGrid,
@@ -364,6 +372,7 @@ fun AppList(
 
 // --- SUB-COMPONENTS ---
 
+/** Shows category chips and loading failures, explaining that combined-list UAD filters cover system apps. */
 @Composable
 private fun AppQuickFilters(
     installers: List<String?>,
@@ -399,6 +408,13 @@ private fun AppQuickFilters(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (filterType == FilterType.Uad && appListType == AppListType.ALL) {
+            Text(
+                text = stringResource(R.string.uad_filter_system_apps_only),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (filterType == FilterType.Uad && showUadStatus && (isLoadingUad || uadLoadFailed)) {
             UadFilterStatus(isLoading = isLoadingUad)
         }
@@ -575,6 +591,7 @@ private fun MultiSelectHeader(
     }
 }
 
+/** Renders the grid or list with draggable scrollbars and clearance for navigation and selection actions. */
 @Composable
 private fun AppListContent(
     list: List<AppInfo>,
@@ -593,6 +610,12 @@ private fun AppListContent(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
+    val navigationClearance = LocalFloatingNavigationClearance.current
+    // The unselected list has no action toolbar to reserve space for. Floating navigation replaces
+    // the old tail padding there; selection mode still needs room for its toolbar above the bar.
+    val bottomContentPadding = if (navigationClearance > 0.dp && selectedPackageNames.isEmpty()) {
+        navigationClearance + 16.dp
+    } else 100.dp + navigationClearance
     // Each view keeps its own lazy state, preserving the existing reset when switching grid/list.
     // The scrollbar overlays only this list viewport, below search and filter controls.
     if (isGrid) {
@@ -619,7 +642,7 @@ private fun AppListContent(
                 columns = GridCells.Fixed(gridLayout.columns),
                 state = gridState,
                 contentPadding = PaddingValues(
-                    bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth
+                    bottom = bottomContentPadding, top = 8.dp, end = scrollbarGutterWidth
                 ),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -662,7 +685,7 @@ private fun AppListContent(
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp, end = scrollbarGutterWidth),
+                contentPadding = PaddingValues(bottom = bottomContentPadding, top = 8.dp, end = scrollbarGutterWidth),
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(list, key = { it.packageName }) { app ->
@@ -864,38 +887,28 @@ private fun AppStatusBadge(app: AppInfo, modifier: Modifier = Modifier) {
 }
 
 /**
- * The UAD safety tier for a system app — "Recommended", "Advanced", "Expert", "Unsafe" — or nothing.
+ * User apps have a translated User app chip in list rows, independent of UAD metadata.
+ * Grid icons have no user badge.
  *
- * It used to be painted only after you opened an app, which is precisely when it no longer helps:
- * the decision a tier informs is the one taken over a multi-selected *list* of system apps, not the
- * one taken on the single app you already went looking for.
- *
- * Two shapes, one decision. A ~100.dp grid cell has no room for a word, so the grid gets a dot in
- * the icon's free top-left corner (the top-right is already an either/or between the selection tick
- * and [AppStatusBadge]); the list, which has a whole row, gets the same [StatusChip] the details
- * screen and the risk dialog draw, so the three agree letter for letter — up to
- * [AppRowTierChipMaxWidth], past which the row's copy ellipsises so the app name survives. What must
- * not fork is the gate and the colour above — hence one composable rather than two.
- *
- * The gate is `AppRiskDialog`'s, deliberately: a tier only means anything where it changes what Thor
- * will let you do, and `FreezePolicy.freezeTierOf` discards it outright for a user app. `isUadLoadFailed`
- * is redundant today — a failed load leaves `uadMap` empty and every recommendation null — but it is
- * the condition that *states* the rule, and a partially-loaded list would otherwise badge some rows
- * and not others with nothing to say which.
- *
- * The tier is the raw string from the UAD list, untranslated, matching all three existing renders.
- * Extensions can contribute an arbitrary one (`UadHelper.buildUadMap`), which is why nothing here
- * exhausts over a fixed set — an unrecognised tier falls through to a neutral colour rather than
- * being dropped or crashing.
- *
- * Cold start: the first frame comes from the Room cache, which stores no bloat fields
- * (`AppRepositoryImpl.getAllApps`), so every app arrives with a null recommendation and this draws
- * nothing until the package rescan lands. That is the intended trade — a badge that appears a beat
- * late is recoverable, a badge that says "Recommended" because the tier had not loaded yet is not.
+ * System apps retain their existing UAD tier chip or grid dot. Failed or absent recommendations
+ * never invent a tier, and extension-provided strings keep their existing neutral colour fallback.
+ * Classification here does not change the policy that gates privileged actions.
  */
 @Composable
-private fun UadTierBadge(app: AppInfo, modifier: Modifier = Modifier, asDot: Boolean = false) {
-    if (!app.isSystem || app.isUadLoadFailed) return
+private fun AppClassificationBadge(app: AppInfo, modifier: Modifier = Modifier, asDot: Boolean = false) {
+    if (!app.isSystem) {
+        if (asDot) return
+        val label = stringResource(R.string.user_app)
+        Box(modifier.widthIn(max = AppRowTierChipMaxWidth)) {
+            StatusChip(
+                text = label,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    if (app.isUadLoadFailed) return
     val tier = app.bloatRecommendation?.takeIf { it.isNotBlank() } ?: return
     val (containerColor, contentColor) = getBloatRecommendationColors(tier)
 
@@ -922,6 +935,7 @@ private fun UadTierBadge(app: AppInfo, modifier: Modifier = Modifier, asDot: Boo
     }
 }
 
+/** Renders a selectable app row with source-appropriate classification and app-state badges. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun AppItemList(
@@ -1001,7 +1015,7 @@ internal fun AppItemList(
                     .weight(1f, fill = false)
                     .then(textSharedModifier)
             )
-            UadTierBadge(
+            AppClassificationBadge(
                 app = app,
                 modifier = Modifier.padding(start = 8.dp)
             )
@@ -1015,6 +1029,7 @@ internal fun AppItemList(
     }
 }
 
+/** Renders a selectable app tile; only system apps receive a UAD recommendation marker. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun AppItemGrid(
@@ -1080,7 +1095,7 @@ internal fun AppItemGrid(
             // Outside the selection branch above, unlike the status badge: a tier is at its most
             // useful while rows are being ticked for a bulk debloat, which is exactly when the
             // top-right corner is showing a tick instead.
-            UadTierBadge(
+            AppClassificationBadge(
                 app = app,
                 asDot = true,
                 modifier = Modifier
@@ -1195,11 +1210,13 @@ private fun EmptyStatePlaceholder(
 private enum class SheetTab { FILTERS, SORT }
 
 @OptIn(ExperimentalMaterial3Api::class)
+/** Edits source, category and sort choices; fixed-state lists keep their existing source/category. */
 @Composable
 private fun AppFilterSheet(
     onDismiss: () -> Unit,
     filterType: FilterType,
     fixedStateFilter: Boolean,
+    combinedAppListsEnabled: Boolean,
     sortBy: SortBy,
     sortOrder: SortOrder,
     isGrid: Boolean,
@@ -1248,18 +1265,10 @@ private fun AppFilterSheet(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
-                    ConnectedButtonGroup(
-                        items = AppListType.entries.map { type ->
-                            ConnectedButtonGroupItem.Icon(
-                                icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                                contentDescription = stringResource(
-                                    if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
-                                )
-                            )
-                        },
-                        selectedIndex = AppListType.entries.indexOf(appListType),
-                        onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
-                        modifier = Modifier.width(IntrinsicSize.Max)
+                    AppTypeFilter(
+                        selection = appListType,
+                        onSelectionChanged = onListTypeChanged,
+                        multiSelectEnabled = combinedAppListsEnabled,
                     )
                 }
 

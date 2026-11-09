@@ -688,12 +688,14 @@ class FakePreferenceRepository(
         write { it.copy(appSortOrder = sortOrder) }
     }
 
+    /** Models source-specific filter writes, including normalization and simulated disk failure. */
     override suspend fun updateAppFilter(appListType: AppListType, filterType: FilterType, selectedFilter: String) {
         val filter = AppFilterPreferences(filterType, selectedFilter).normalizedFor(appListType)
         write {
             when (appListType) {
                 AppListType.USER -> it.copy(userAppFilter = filter)
                 AppListType.SYSTEM -> it.copy(systemAppFilter = filter)
+                AppListType.ALL -> it.copy(combinedAppFilter = filter)
             }
         }
     }
@@ -702,9 +704,16 @@ class FakePreferenceRepository(
         write { it.copy(showReinstallAllCard = isVisible) }
     }
 
+    override suspend fun setCombinedAppListsEnabled(enabled: Boolean) {
+        write { it.copy(combinedAppListsEnabled = enabled) }
+    }
+
     override suspend fun setDefaultTab(tab: DefaultTab) {
         write { it.copy(defaultTab = tab) }
     }
+
+    override suspend fun setNavigationBarPreferences(preferences: com.valhalla.thor.domain.model.NavigationBarPreferences): Boolean =
+        write { it.copy(navigationBar = preferences.normalized()) }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
         write { it.copy(showInstallerTile = isVisible) }

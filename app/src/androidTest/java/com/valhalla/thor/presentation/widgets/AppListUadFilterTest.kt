@@ -8,6 +8,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -45,6 +47,11 @@ class AppListUadFilterTest {
         rule.onNodeWithText(label(R.string.filter_type_uad)).performScrollTo().assertExists()
 
         rule.onNodeWithContentDescription(label(R.string.chip_user))
+            .performScrollTo()
+            .performClick()
+        rule.runOnIdle { assertEquals(AppListType.ALL, listType) }
+        rule.onNodeWithText(label(R.string.filter_type_uad)).assertExists()
+        rule.onNodeWithContentDescription(label(R.string.chip_system))
             .performScrollTo()
             .performClick()
 
@@ -109,10 +116,92 @@ class AppListUadFilterTest {
         rule.onNodeWithText(label(R.string.uad_filter_loading)).assertDoesNotExist()
     }
 
+    @Test
+    fun sourceButtonsSelectOnlyOneSourceByDefault() {
+        var selection by mutableStateOf(AppListType.USER)
+        rule.setContent {
+            MaterialTheme { AppTypeFilter(selection, { selection = it }) }
+        }
+        val user = rule.onNodeWithContentDescription(label(R.string.chip_user))
+        val system = rule.onNodeWithContentDescription(label(R.string.chip_system))
+        user.assertIsOn()
+        system.assertIsOff().performClick().assertIsOn()
+        user.assertIsOff()
+        rule.runOnIdle { assertEquals(AppListType.SYSTEM, selection) }
+        user.performClick().assertIsOn()
+        system.assertIsOff()
+        user.performClick().assertIsOn()
+        rule.runOnIdle { assertEquals(AppListType.USER, selection) }
+    }
+
+    @Test
+    fun sourceTogglesAllowBothAndKeepAtLeastOneSelected() {
+        var selection by mutableStateOf(AppListType.ALL)
+        rule.setContent {
+            MaterialTheme { AppTypeFilter(selection, { selection = it }, multiSelectEnabled = true) }
+        }
+        val user = rule.onNodeWithContentDescription(label(R.string.chip_user))
+        val system = rule.onNodeWithContentDescription(label(R.string.chip_system))
+        user.assertIsOn()
+        system.assertIsOn().performClick().assertIsOff()
+        user.assertIsOn().assertIsEnabled().performClick().assertIsOn()
+        rule.runOnIdle { assertEquals(AppListType.USER, selection) }
+        system.performClick().assertIsOn()
+        user.performClick().assertIsOff()
+        system.assertIsOn().assertIsEnabled().performClick().assertIsOn()
+        rule.runOnIdle { assertEquals(AppListType.SYSTEM, selection) }
+        user.performClick().assertIsOn()
+        rule.runOnIdle { assertEquals(AppListType.ALL, selection) }
+    }
+
+    @Test
+    fun combinedUadViewExplainsSystemScope() {
+        listType = AppListType.ALL
+        setList()
+        rule.onNodeWithText(label(R.string.uad_filter_system_apps_only)).assertExists()
+        rule.onNodeWithText(label(R.string.uad_filter_recommended)).assertExists()
+    }
+
+    @Test
+    fun userAppRowHasTypeLabelEvenIfMetadataContainsARecommendation() {
+        rule.setContent {
+            MaterialTheme {
+                AppItemList(
+                    app = AppInfo(packageName = "demo.user", appName = "Notes", isSystem = false,
+                        bloatRecommendation = "Recommended", isUadLoaded = true),
+                    isSelected = false,
+                    onClick = {},
+                    onLongClick = {},
+                )
+            }
+        }
+        rule.onNodeWithText(label(R.string.user_app), substring = true).assertExists()
+        rule.onNodeWithText("Recommended", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun userAppGridHasNoPersonMarkerOrUadAdvice() {
+        rule.setContent {
+            MaterialTheme {
+                AppItemGrid(
+                    app = AppInfo(packageName = "demo.user", appName = "Notes", isSystem = false,
+                        bloatRecommendation = "Recommended", isUadLoadFailed = true),
+                    isSelected = false,
+                    onClick = {},
+                    onLongClick = {},
+                )
+            }
+        }
+        rule.onNodeWithContentDescription(label(R.string.user_app)).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Recommended").assertDoesNotExist()
+    }
+
+    /** Mounts reactive source/filter controls with configurable UAD loading and failure state. */
     private fun setList() = rule.setContent {
         MaterialTheme {
             AppList(
                 appListType = listType,
+                combinedAppListsEnabled = true,
                 installers = listOf("All"),
                 appList = emptyList<AppInfo>(),
                 selectedFilter = selectedFilter,

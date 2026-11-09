@@ -216,7 +216,7 @@ fun FreezeProfileEditorSheet(
                     fontWeight = FontWeight.Bold
                 )
                 ConnectedButtonGroup(
-                    items = AppListType.entries.map { type ->
+                    items = AppListType.individualTypes.map { type ->
                         ConnectedButtonGroupItem.Icon(
                             icon = ImageVector.vectorResource(
                                 if (type == AppListType.USER) R.drawable.apps else R.drawable.android
@@ -226,8 +226,8 @@ fun FreezeProfileEditorSheet(
                             )
                         )
                     },
-                    selectedIndex = AppListType.entries.indexOf(selectedType),
-                    onItemSelected = { if (!isSaving) selectedType = AppListType.entries[it] },
+                    selectedIndex = AppListType.individualTypes.indexOf(selectedType),
+                    onItemSelected = { if (!isSaving) selectedType = AppListType.individualTypes[it] },
                     modifier = Modifier.width(IntrinsicSize.Max)
                 )
             }

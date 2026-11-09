@@ -111,6 +111,7 @@ fun SettingsCategoryScreen(
     onNavigateToCustomizeAppInfoActions: () -> Unit = {},
     onNavigateToCustomizeAppListMultiActions: () -> Unit = {},
     onNavigateToCustomizeFreezerMultiActions: () -> Unit = {},
+    onNavigateToCustomizeNavigation: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -417,6 +418,25 @@ fun SettingsCategoryScreen(
                         showChevron = true,
                         highlighted = lit,
                         onClick = onNavigateToCustomizeAppInfoActions
+                    )
+
+                    SettingsRowId.COMBINED_APP_LISTS -> SettingsSwitchRow(
+                        icon = R.drawable.dashboard_customize,
+                        title = stringResource(R.string.combined_app_lists),
+                        subtitle = stringResource(R.string.combined_app_lists_desc),
+                        checked = prefs.combinedAppListsEnabled,
+                        highlighted = lit,
+                        subtitleMaxLines = Int.MAX_VALUE,
+                        onCheckedChange = viewModel::setCombinedAppListsEnabled,
+                    )
+
+                    SettingsRowId.NAVIGATION_BAR -> SettingsClickRow(
+                        icon = R.drawable.dashboard_customize,
+                        title = stringResource(R.string.customization_navigation),
+                        subtitle = stringResource(R.string.customization_navigation_desc),
+                        showChevron = true,
+                        highlighted = lit,
+                        onClick = onNavigateToCustomizeNavigation,
                     )
 
                     SettingsRowId.APP_LIST_MULTI_ACTIONS -> SettingsClickRow(

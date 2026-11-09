@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.NavigationBarPreferences
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
@@ -164,10 +165,14 @@ class PreferenceRepositoryImpl(
         val USER_SELECTED_FILTER = stringPreferencesKey("user_app_selected_filter")
         val SYSTEM_FILTER_TYPE = stringPreferencesKey("system_app_filter_type")
         val SYSTEM_SELECTED_FILTER = stringPreferencesKey("system_app_selected_filter")
+        val COMBINED_APP_LISTS_ENABLED = booleanPreferencesKey("combined_app_lists_enabled")
+        val COMBINED_FILTER_TYPE = stringPreferencesKey("combined_app_filter_type")
+        val COMBINED_SELECTED_FILTER = stringPreferencesKey("combined_app_selected_filter")
         val SHOW_REINSTALL_ALL = booleanPreferencesKey("show_reinstall_all")
 
         // Navigation
         val DEFAULT_TAB = stringPreferencesKey("default_tab")
+        val NAVIGATION_BAR = stringPreferencesKey("navigation_bar")
 
         // Home tiles
         val SHOW_INSTALLER_TILE = booleanPreferencesKey("show_installer_tile")
@@ -281,9 +286,18 @@ class PreferenceRepositoryImpl(
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.SHOW_REINSTALL_ALL] = isVisible }
     }
 
+    override suspend fun setCombinedAppListsEnabled(enabled: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.COMBINED_APP_LISTS_ENABLED] = enabled }
+    }
+
     override suspend fun setDefaultTab(tab: DefaultTab) {
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.DEFAULT_TAB] = tab.name }
     }
+
+    override suspend fun setNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean =
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.NAVIGATION_BAR] = NavigationPreferencesCodec.encode(preferences)
+        }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.SHOW_INSTALLER_TILE] = isVisible }
@@ -545,14 +559,18 @@ class PreferenceRepositoryImpl(
     }
 }
 
+/** Selects the category key belonging to the User, System or combined filter profile. */
 private fun appFilterTypeKey(type: AppListType): Preferences.Key<String> = when (type) {
     AppListType.USER -> Keys.USER_FILTER_TYPE
     AppListType.SYSTEM -> Keys.SYSTEM_FILTER_TYPE
+    AppListType.ALL -> Keys.COMBINED_FILTER_TYPE
 }
 
+/** Selects the chip key belonging to the User, System or combined filter profile. */
 private fun appSelectedFilterKey(type: AppListType): Preferences.Key<String> = when (type) {
     AppListType.USER -> Keys.USER_SELECTED_FILTER
     AppListType.SYSTEM -> Keys.SYSTEM_SELECTED_FILTER
+    AppListType.ALL -> Keys.COMBINED_SELECTED_FILTER
 }
 
 /** Write the selected tab's complete pair in one edit, leaving the legacy fallback untouched. */
@@ -576,12 +594,14 @@ internal suspend fun DataStore<Preferences>.writeAppFilter(
     }
 }
 
+/** Restores a normalized profile; only wholly absent individual profiles inherit legacy filters. */
 private fun Preferences.appFilterFor(type: AppListType): AppFilterPreferences {
     val savedType = this[appFilterTypeKey(type)]
     val savedSelection = this[appSelectedFilterKey(type)]
     // Only a wholly absent profile inherits the old pair. A partial profile must never combine a
     // new category with a legacy chip, or vice versa, because those values may mean different things.
-    val useLegacy = savedType == null && savedSelection == null
+    // The new combined view starts unfiltered instead of inheriting an old single-source filter.
+    val useLegacy = type != AppListType.ALL && savedType == null && savedSelection == null
     val typeToken = if (useLegacy) this[Keys.FILTER_TYPE] else savedType
     val selection = if (useLegacy) this[Keys.SELECTED_FILTER] else savedSelection
     val filterType = when (typeToken) {
@@ -824,7 +844,10 @@ internal fun Preferences.toUserPreferences(
         appSortOrder = sortOrder,
         userAppFilter = prefs.appFilterFor(AppListType.USER),
         systemAppFilter = prefs.appFilterFor(AppListType.SYSTEM),
+        combinedAppListsEnabled = prefs[Keys.COMBINED_APP_LISTS_ENABLED] ?: false,
+        combinedAppFilter = prefs.appFilterFor(AppListType.ALL),
         defaultTab = defaultTab,
+        navigationBar = NavigationPreferencesCodec.decode(prefs[Keys.NAVIGATION_BAR]),
         showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
         showInstallerTile = prefs[Keys.SHOW_INSTALLER_TILE] ?: true,
         showExtensionsTile = prefs[Keys.SHOW_EXTENSIONS_TILE] ?: true,

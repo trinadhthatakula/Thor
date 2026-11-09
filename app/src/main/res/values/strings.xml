@@ -1052,4 +1052,42 @@
     <string name="root_refresh_busy">Waiting for root work to finish. New root actions are paused.</string>
     <string name="root_refresh_timed_out">The root check timed out. New root actions are paused.</string>
     <string name="root_refresh_failed">Could not check root access. New root actions are paused.</string>
+    <string name="user_app">User app</string>
+    <string name="uad_filter_system_apps_only">UAD recommendations apply only to system apps.</string>
+
+    <!-- Navigation customization -->
+    <string name="customization_navigation">Navigation bar</string>
+    <string name="customization_navigation_desc">Customize placement, style, labels and shapes</string>
+    <string name="navigation_preview_hint">Tap the preview to try each destination. Changes are saved when you tap Apply.</string>
+    <string name="navigation_placement">Placement</string>
+    <string name="navigation_docked">Docked</string>
+    <string name="navigation_floating">Floating</string>
+    <string name="navigation_appearance">Style</string>
+    <string name="navigation_expanding">Expanding</string>
+    <string name="navigation_segmented">Segmented</string>
+    <string name="navigation_standard">Standard</string>
+    <string name="navigation_labels">Labels</string>
+    <string name="navigation_automatic">Auto</string>
+    <string name="navigation_selected">Selected</string>
+    <string name="navigation_all">All</string>
+    <string name="navigation_hidden">Hidden</string>
+    <string name="navigation_icons">Show icons</string>
+    <string name="navigation_text_only_hint">Labels stay visible when icons are hidden.</string>
+    <string name="navigation_container_shape">Bar shape</string>
+    <string name="navigation_indicator_shape">Selection shape</string>
+    <string name="navigation_default">Default</string>
+    <string name="navigation_round">Round</string>
+    <string name="navigation_soft">Soft</string>
+    <string name="navigation_square">Square</string>
+    <string name="navigation_spacing">Item spacing</string>
+    <string name="navigation_padding">Inner padding</string>
+    <string name="navigation_margin">Floating margin</string>
+    <string name="navigation_elevation">Elevation</string>
+    <string name="navigation_save_failed">Could not save the navigation style. Try Apply again.</string>
+    <string name="navigation_reset">Reset</string>
+    <string name="navigation_apply">Apply</string>
+    <string name="navigation_saving">Saving…</string>
+    <string name="navigation_dp">%1$d dp</string>
+    <string name="combined_app_lists">Combined app lists</string>
+    <string name="combined_app_lists_desc">Allow User and System to be selected together in Apps and Freezer</string>
 </resources>

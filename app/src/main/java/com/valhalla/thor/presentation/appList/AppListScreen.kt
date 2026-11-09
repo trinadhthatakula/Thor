@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.presentation.navigation.LocalFloatingNavigationClearance
+
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,7 +15,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,14 +62,12 @@ import com.valhalla.thor.presentation.common.OperationMessage
 import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.presentation.widgets.AppTypeFilter
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import androidx.core.net.toUri
 import com.valhalla.asgard.components.AsgardBanner
-import com.valhalla.asgard.components.ConnectedButtonGroup
-import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
@@ -83,6 +82,7 @@ import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
+/** Hosts app browsing and bulk actions, opening details in the supplied pane or an in-place sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(
@@ -257,18 +257,10 @@ fun AppListScreen(
                     QueueNavigationButton(onClick = onNavigateToQueue)
 
                     // The dedicated Suspended list always includes both app sources.
-                    if (!state.suspendedOnly) ConnectedButtonGroup(
-                        items = AppListType.entries.map { type ->
-                            ConnectedButtonGroupItem.Icon(
-                                icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                                contentDescription = stringResource(
-                                    if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
-                                )
-                            )
-                        },
-                        selectedIndex = AppListType.entries.indexOf(state.appListType),
-                        onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
-                        modifier = Modifier.width(IntrinsicSize.Max)
+                    if (!state.suspendedOnly) AppTypeFilter(
+                        selection = state.appListType,
+                        onSelectionChanged = viewModel::updateListType,
+                        multiSelectEnabled = state.combinedAppListsEnabled,
                     )
                 }
             }
@@ -318,6 +310,7 @@ fun AppListScreen(
                 AppList(
                     appListType = state.appListType,
                     fixedStateFilter = state.suspendedOnly,
+                    combinedAppListsEnabled = state.combinedAppListsEnabled,
                     installers = state.availableInstallers,
                     selectedFilter = state.selectedFilter,
                     filterType = state.filterType,
@@ -389,7 +382,8 @@ fun AppListScreen(
         OperationFeedbackHost(
             operationFeedback,
             enabled = freezerPrompt == null,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .padding(16.dp).padding(bottom = LocalFloatingNavigationClearance.current),
         )
         FreezerPromptSnackbar(
             visible = freezerPrompt != null,
@@ -401,7 +395,7 @@ fun AppListScreen(
             onDismiss = { freezerPrompt = null },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
+                .padding(bottom = 16.dp + LocalFloatingNavigationClearance.current)
         )
 
         pendingBulkFreeze?.let { request ->

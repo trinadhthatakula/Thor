@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.NavigationBarPreferences
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppActionId
@@ -240,9 +241,16 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
     }
 
+    fun setCombinedAppListsEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setCombinedAppListsEnabled(enabled) }
+    }
+
     fun setDefaultTab(tab: DefaultTab) {
         viewModelScope.launch { preferenceRepository.setDefaultTab(tab) }
     }
+
+    suspend fun applyNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean =
+        preferenceRepository.setNavigationBarPreferences(preferences)
 
     fun setReinstallAllCardVisibility(visible: Boolean) {
         viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
