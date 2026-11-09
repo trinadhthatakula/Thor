@@ -9,6 +9,7 @@ enum class AppListType {
     val includesUser: Boolean get() = this != SYSTEM
     val includesSystem: Boolean get() = this != USER
 
+    /** Tests membership by installation type; ALL includes both user and system apps. */
     fun includes(app: AppInfo): Boolean = if (app.isSystem) includesSystem else includesUser
 
     /** Opting out restores User while preserving an existing single-source selection. */

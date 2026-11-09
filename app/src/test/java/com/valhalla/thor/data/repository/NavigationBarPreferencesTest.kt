@@ -27,6 +27,7 @@ class NavigationBarPreferencesTest {
         assertEquals(DefaultTab.FREEZER, prefs.defaultTab)
     }
 
+    /** Invalid JSON, incompatible shapes and unknown enum values must restore safe defaults. */
     @Test fun corruptedAndUnknownEnumSnapshotsCannotCrashStartup() {
         for (raw in listOf("not JSON", "[]", "{\"appearance\":\"future\"}", "{\"spacing\":null}")) {
             assertEquals(NavigationBarPreferences(), NavigationPreferencesCodec.decode(raw))
@@ -54,6 +55,7 @@ class NavigationBarPreferencesTest {
         assertEquals(NavigationLabels.ALWAYS, prefs.effectiveLabels)
     }
 
+    /** Every stored label policy must survive hiding icons, saving and restoring icon visibility. */
     @Test fun savingTextOnlyNavigationPreservesEveryLabelChoiceForWhenIconsReturn() {
         for (labels in NavigationLabels.entries) {
             val original = NavigationBarPreferences(labels = labels)

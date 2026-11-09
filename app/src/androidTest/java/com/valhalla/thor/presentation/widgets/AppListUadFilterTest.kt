@@ -196,6 +196,7 @@ class AppListUadFilterTest {
         rule.onNodeWithContentDescription("Recommended").assertDoesNotExist()
     }
 
+    /** Mounts reactive source/filter controls with configurable UAD loading and failure state. */
     private fun setList() = rule.setContent {
         MaterialTheme {
             AppList(

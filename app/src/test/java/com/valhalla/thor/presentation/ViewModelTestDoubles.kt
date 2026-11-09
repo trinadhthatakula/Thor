@@ -688,6 +688,7 @@ class FakePreferenceRepository(
         write { it.copy(appSortOrder = sortOrder) }
     }
 
+    /** Models source-specific filter writes, including normalization and simulated disk failure. */
     override suspend fun updateAppFilter(appListType: AppListType, filterType: FilterType, selectedFilter: String) {
         val filter = AppFilterPreferences(filterType, selectedFilter).normalizedFor(appListType)
         write {
@@ -711,10 +712,8 @@ class FakePreferenceRepository(
         write { it.copy(defaultTab = tab) }
     }
 
-    override suspend fun setNavigationBarPreferences(preferences: com.valhalla.thor.domain.model.NavigationBarPreferences): Boolean {
+    override suspend fun setNavigationBarPreferences(preferences: com.valhalla.thor.domain.model.NavigationBarPreferences): Boolean =
         write { it.copy(navigationBar = preferences.normalized()) }
-        return true
-    }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
         write { it.copy(showInstallerTile = isVisible) }

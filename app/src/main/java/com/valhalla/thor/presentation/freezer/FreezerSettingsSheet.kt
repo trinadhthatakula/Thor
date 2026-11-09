@@ -50,6 +50,7 @@ import com.valhalla.asgard.components.AsgardActionItem
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 
+/** Offers freezer display/source choices and the bulk actions available to the current privilege mode. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FreezerSettingsSheet(

@@ -1083,6 +1083,7 @@ class AppListViewModel(
         }
     }
 
+    /** Builds the searched, filtered and sorted source list, tracking UAD readiness on system apps. */
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
         val rawList = when {

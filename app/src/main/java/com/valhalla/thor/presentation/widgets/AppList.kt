@@ -111,6 +111,7 @@ import com.valhalla.asgard.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 
+/** Displays app sources, search/filter controls and bulk selection, reporting edits to its caller. */
 @Composable
 fun AppList(
     modifier: Modifier = Modifier,
@@ -371,6 +372,7 @@ fun AppList(
 
 // --- SUB-COMPONENTS ---
 
+/** Shows category chips and loading failures, explaining that combined-list UAD filters cover system apps. */
 @Composable
 private fun AppQuickFilters(
     installers: List<String?>,
@@ -589,6 +591,7 @@ private fun MultiSelectHeader(
     }
 }
 
+/** Renders the grid or list with draggable scrollbars and clearance for navigation and selection actions. */
 @Composable
 private fun AppListContent(
     list: List<AppInfo>,
@@ -932,6 +935,7 @@ private fun AppClassificationBadge(app: AppInfo, modifier: Modifier = Modifier, 
     }
 }
 
+/** Renders a selectable app row with source-appropriate classification and app-state badges. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun AppItemList(
@@ -1025,6 +1029,7 @@ internal fun AppItemList(
     }
 }
 
+/** Renders a selectable app tile; only system apps receive a UAD recommendation marker. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun AppItemGrid(
@@ -1205,6 +1210,7 @@ private fun EmptyStatePlaceholder(
 private enum class SheetTab { FILTERS, SORT }
 
 @OptIn(ExperimentalMaterial3Api::class)
+/** Edits source, category and sort choices; fixed-state lists keep their existing source/category. */
 @Composable
 private fun AppFilterSheet(
     onDismiss: () -> Unit,

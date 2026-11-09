@@ -35,6 +35,7 @@ val filterTypes = listOf(
     FilterType.Uad
 )
 
+/** Offers UAD filtering only when the selected list includes system apps. */
 fun availableFilterTypes(appListType: AppListType): List<FilterType> =
     filterTypes.filter { it != FilterType.Uad || appListType.includesSystem }
 

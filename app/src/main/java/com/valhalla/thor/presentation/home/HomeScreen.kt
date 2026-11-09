@@ -80,6 +80,7 @@ import com.valhalla.thor.presentation.theme.greenLight
 import com.valhalla.thor.presentation.widgets.AppIcon
 import org.koin.androidx.compose.koinViewModel
 
+/** Renders source-specific dashboard data and routes tile actions to their owning workflows. */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun HomeScreen(

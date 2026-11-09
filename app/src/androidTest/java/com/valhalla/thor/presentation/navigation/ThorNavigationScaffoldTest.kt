@@ -31,6 +31,7 @@ class ThorNavigationScaffoldTest {
     private var margin by mutableIntStateOf(12)
     private var clearance = 0.dp
 
+    /** Builds a scrollable host with measured action clearance and optional persistent export progress. */
     private fun show(export: Boolean = false) {
         rule.setContent {
             MaterialTheme {

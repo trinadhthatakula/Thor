@@ -82,6 +82,7 @@ import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
+/** Hosts app browsing and bulk actions, opening details in the supplied pane or an in-place sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(

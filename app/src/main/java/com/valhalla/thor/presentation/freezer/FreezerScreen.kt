@@ -98,6 +98,7 @@ import org.koin.androidx.compose.koinViewModel
 /** Sentinel id for "the editor is open on a profile that does not exist yet". */
 private const val NEW_PROFILE_ID = -1L
 
+/** Shows watchlisted apps and profile actions, keeping list tails and controls above floating navigation. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FreezerScreen(

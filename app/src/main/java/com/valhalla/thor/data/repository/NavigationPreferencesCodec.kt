@@ -10,6 +10,7 @@ import kotlinx.serialization.json.Json
 internal object NavigationPreferencesCodec {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     fun encode(value: NavigationBarPreferences): String = json.encodeToString(value.normalized())
+    /** Restores and clamps a saved style, using defaults for absent or invalid snapshots. */
     fun decode(value: String?): NavigationBarPreferences = value?.let {
         runCatching { json.decodeFromString<NavigationBarPreferences>(it).normalized() }.getOrNull()
     } ?: NavigationBarPreferences()

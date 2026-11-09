@@ -142,6 +142,7 @@ data class UserPreferences(
      */
     val settingsLost: Boolean = false
 ) {
+    /** Returns the selected source's independent profile with unsupported categories reset. */
     fun appFilterFor(type: AppListType): AppFilterPreferences = when (type) {
         AppListType.USER -> userAppFilter
         AppListType.SYSTEM -> systemAppFilter

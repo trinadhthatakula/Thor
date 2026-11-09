@@ -30,6 +30,7 @@ class NavigationCustomizationTest {
         rule.onNodeWithContentDescription(label(group)).performScrollTo().assertIsDisplayed()
         return rule.onNodeWithText(label(value)).performScrollTo().assertIsDisplayed()
     }
+    /** Mounts the editor with a recorded draft submission and a configurable persistence outcome. */
     private fun show(preferences: NavigationBarPreferences = NavigationBarPreferences(), saveSucceeds: Boolean = true) {
         rule.setContent {
             MaterialTheme {

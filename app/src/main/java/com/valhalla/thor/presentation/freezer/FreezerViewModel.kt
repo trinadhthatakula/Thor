@@ -272,6 +272,7 @@ class FreezerViewModel(
         _uiState.update { it.copy(multiSelection = packageNames.toSet()) }
     }
 
+    /** Enforces combined-list opt-in and clears bulk selection when the visible source changes. */
     fun updateListType(type: AppListType) {
         _uiState.update {
             val next = type.forCombinedLists(it.combinedAppListsEnabled)
@@ -883,6 +884,7 @@ class FreezerViewModel(
         }
     }
 
+    /** Applies saved freezer settings, discarding hidden selections when combined lists are disabled. */
     private fun observePreferences() {
         viewModelScope.launch {
             preferenceRepository.userPreferences.collect { prefs ->

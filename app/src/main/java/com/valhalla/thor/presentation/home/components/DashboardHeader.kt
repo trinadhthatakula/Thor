@@ -50,6 +50,7 @@ import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 
+/** Combines privilege status/actions with the dashboard's single-source User/System selector. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardHeader(

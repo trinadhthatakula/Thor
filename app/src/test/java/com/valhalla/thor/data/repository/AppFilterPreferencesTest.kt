@@ -33,6 +33,7 @@ class AppFilterPreferencesTest {
         }
     }
 
+    /** Legacy category/chip pairs migrate together into each absent single-source profile. */
     @Test
     fun `each absent profile inherits the complete legacy filter`() {
         val legacyFilters = listOf(
@@ -52,6 +53,7 @@ class AppFilterPreferencesTest {
         }
     }
 
+    /** A profile edit must leave the other source and the legacy fallback available for migration. */
     @Test
     fun `editing one inherited profile never changes the untouched profile or legacy fallback`() = runTest {
         for (type in AppListType.individualTypes) {
@@ -277,12 +279,14 @@ class AppFilterPreferencesTest {
         assertEquals("Active", disabled.combinedAppFilter.selectedFilter)
     }
 
+    /** Locates each persisted category key independently of the repository's key helper. */
     private fun typeKey(type: AppListType): Preferences.Key<String> = when (type) {
         AppListType.USER -> Keys.USER_FILTER_TYPE
         AppListType.SYSTEM -> Keys.SYSTEM_FILTER_TYPE
         AppListType.ALL -> Keys.COMBINED_FILTER_TYPE
     }
 
+    /** Locates each persisted chip key independently of the repository's key helper. */
     private fun selectionKey(type: AppListType): Preferences.Key<String> = when (type) {
         AppListType.USER -> Keys.USER_SELECTED_FILTER
         AppListType.SYSTEM -> Keys.SYSTEM_SELECTED_FILTER

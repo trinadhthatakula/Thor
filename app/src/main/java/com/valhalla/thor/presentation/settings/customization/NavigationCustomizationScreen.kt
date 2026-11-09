@@ -133,6 +133,7 @@ internal fun NavigationCustomizationScreen(
     }
 }
 
+/** Edits the draft while preserving hidden icon-label choices and gating floating-only controls. */
 @Composable
 private fun NavigationControls(draft: NavigationBarPreferences, enabled: Boolean, onDraftChange: (NavigationBarPreferences) -> Unit) {
     NavigationChoice(R.string.navigation_placement, listOf(R.string.navigation_docked, R.string.navigation_floating), draft.placement.ordinal, enabled) {

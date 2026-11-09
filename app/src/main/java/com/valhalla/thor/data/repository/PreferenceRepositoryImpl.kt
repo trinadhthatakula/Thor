@@ -559,12 +559,14 @@ class PreferenceRepositoryImpl(
     }
 }
 
+/** Selects the category key belonging to the User, System or combined filter profile. */
 private fun appFilterTypeKey(type: AppListType): Preferences.Key<String> = when (type) {
     AppListType.USER -> Keys.USER_FILTER_TYPE
     AppListType.SYSTEM -> Keys.SYSTEM_FILTER_TYPE
     AppListType.ALL -> Keys.COMBINED_FILTER_TYPE
 }
 
+/** Selects the chip key belonging to the User, System or combined filter profile. */
 private fun appSelectedFilterKey(type: AppListType): Preferences.Key<String> = when (type) {
     AppListType.USER -> Keys.USER_SELECTED_FILTER
     AppListType.SYSTEM -> Keys.SYSTEM_SELECTED_FILTER
@@ -592,6 +594,7 @@ internal suspend fun DataStore<Preferences>.writeAppFilter(
     }
 }
 
+/** Restores a normalized profile; only wholly absent individual profiles inherit legacy filters. */
 private fun Preferences.appFilterFor(type: AppListType): AppFilterPreferences {
     val savedType = this[appFilterTypeKey(type)]
     val savedSelection = this[appSelectedFilterKey(type)]

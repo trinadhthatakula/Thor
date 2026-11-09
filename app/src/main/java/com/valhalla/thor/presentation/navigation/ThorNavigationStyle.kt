@@ -64,6 +64,7 @@ internal fun navigationConfiguration(
     )
 }
 
+/** Resolves a saved shape choice; null lets Asgard use its appearance-specific default. */
 @Composable
 private fun navigationShape(shape: NavigationShape): Shape? = when (shape) {
     NavigationShape.DEFAULT -> null

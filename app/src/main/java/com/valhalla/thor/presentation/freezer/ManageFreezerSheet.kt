@@ -69,6 +69,7 @@ import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import kotlinx.coroutines.launch
 
+/** Browses one app source at a time to edit watchlist membership, confirming risky additions. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageFreezerSheet(
