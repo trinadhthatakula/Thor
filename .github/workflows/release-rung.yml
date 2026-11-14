@@ -308,7 +308,7 @@ jobs:
           java-version: '21'
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1
         with:
           ruby-version: '3.3'
           bundler-cache: false
@@ -572,7 +572,7 @@ jobs:
       # with empty outputs and cut a tagless, assetless release.
       - name: Create GitHub Release
         if: ${{ !cancelled() && steps.gate.outputs.publish == 'true' && steps.prep_notes.outcome == 'success' }}
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: v${{ steps.prep_notes.outputs.version_name }}${{ inputs.tag_suffix }}
           target_commitish: ${{ github.sha }}
