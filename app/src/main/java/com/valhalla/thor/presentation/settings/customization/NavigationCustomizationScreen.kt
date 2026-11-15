@@ -164,11 +164,20 @@ private fun NavigationControls(draft: NavigationBarPreferences, enabled: Boolean
 @Composable
 private fun NavigationChoice(@StringRes title: Int, options: List<Int>, selected: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
     val groupLabel = stringResource(title)
+    val scroll = rememberScrollState()
+    // The selected end option should be visible when the group is wider than the screen. In
+    // particular, the default Hidden label is the last option in the navigation-label group.
+    LaunchedEffect(selected, scroll.maxValue) {
+        when (selected) {
+            0 -> scroll.scrollTo(0)
+            options.lastIndex -> scroll.scrollTo(scroll.maxValue)
+        }
+    }
     Column(Modifier.semantics { contentDescription = groupLabel }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(groupLabel, style = MaterialTheme.typography.labelLarge)
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val availableWidth = maxWidth
-            Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().horizontalScroll(scroll)) {
                 ConnectedButtonGroup(
                     items = options.map { ConnectedButtonGroupItem.Label(stringResource(it)) },
                     selectedIndex = selected, onItemSelected = onSelect, enabled = enabled,

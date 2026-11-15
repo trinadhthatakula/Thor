@@ -42,46 +42,63 @@ class NavigationCustomizationTest {
         }
     }
 
+    @Test fun floatingIconsAreDefaultAndLabelsCanBeEnabled() {
+        show()
+        option(R.string.navigation_placement, R.string.navigation_floating).assertIsOn()
+        rule.onNodeWithContentDescription(label(R.string.navigation_labels)).performScrollTo()
+        rule.onNodeWithText(label(R.string.navigation_hidden)).assertIsOn()
+        val hidden = rule.onNodeWithText(label(R.string.navigation_hidden)).fetchSemanticsNode()
+        assertEquals(hidden.size.width.toFloat(), hidden.boundsInRoot.width, 1f)
+        rule.onNodeWithContentDescription(label(R.string.home_desc)).assertIsDisplayed()
+        rule.onNodeWithText(label(R.string.home)).assertDoesNotExist()
+        option(R.string.navigation_labels, R.string.navigation_all).performClick().assertIsOn()
+        rule.onNodeWithContentDescription(label(R.string.home_desc)).assertIsDisplayed()
+        rule.onNodeWithText(label(R.string.navigation_apply)).performClick()
+        rule.waitUntil { !open }
+        rule.runOnIdle { assertEquals(NavigationLabels.ALWAYS, applied?.labels) }
+    }
+
     @Test fun previewChangesDoNotSaveUntilApply() {
         show()
-        option(R.string.navigation_placement, R.string.navigation_floating).performClick()
+        option(R.string.navigation_placement, R.string.navigation_docked).performClick()
         option(R.string.navigation_appearance, R.string.navigation_segmented).performClick()
         rule.onNodeWithContentDescription(label(R.string.freezer_desc)).performClick().assertIsSelected()
         rule.runOnIdle { assertNull(applied) }
         rule.onNodeWithText(label(R.string.navigation_apply)).assertIsDisplayed().performClick()
         rule.waitUntil { !open }
         rule.runOnIdle {
-            assertEquals(NavigationPlacement.FLOATING, applied?.placement)
+            assertEquals(NavigationPlacement.DOCKED, applied?.placement)
             assertEquals(NavigationAppearance.SEGMENTED, applied?.appearance)
         }
     }
 
     @Test fun cancelDiscardsDraft() {
         show()
-        option(R.string.navigation_placement, R.string.navigation_floating).performClick()
+        option(R.string.navigation_placement, R.string.navigation_docked).performClick()
         rule.onNodeWithText(label(R.string.cancel)).performClick()
         rule.runOnIdle { assertNull(applied); open = true }
-        option(R.string.navigation_placement, R.string.navigation_docked).assertIsOn()
+        option(R.string.navigation_placement, R.string.navigation_floating).assertIsOn()
     }
 
     @Test fun backArrowDiscardsDraft() {
         show()
-        option(R.string.navigation_placement, R.string.navigation_floating).performClick()
+        option(R.string.navigation_placement, R.string.navigation_docked).performClick()
         rule.onNodeWithContentDescription(label(R.string.cd_back)).performClick()
         rule.runOnIdle { assertFalse(open); assertNull(applied) }
     }
 
     @Test fun systemBackDiscardsDraft() {
         show()
-        option(R.string.navigation_placement, R.string.navigation_floating).performClick()
+        option(R.string.navigation_placement, R.string.navigation_docked).performClick()
         pressBack()
         rule.runOnIdle { assertFalse(open); assertNull(applied) }
     }
 
     @Test fun resetIsAlsoAPreviewUntilApply() {
-        show(NavigationBarPreferences(placement = NavigationPlacement.FLOATING, appearance = NavigationAppearance.STANDARD))
+        show(NavigationBarPreferences(placement = NavigationPlacement.DOCKED, appearance = NavigationAppearance.STANDARD))
         rule.onNodeWithText(label(R.string.navigation_reset)).performClick()
-        option(R.string.navigation_placement, R.string.navigation_docked).assertIsOn()
+        option(R.string.navigation_placement, R.string.navigation_floating).assertIsOn()
+        option(R.string.navigation_labels, R.string.navigation_hidden).assertIsOn()
         rule.runOnIdle { assertNull(applied) }
         rule.onNodeWithText(label(R.string.navigation_apply)).performClick()
         rule.waitUntil { !open }
@@ -90,10 +107,10 @@ class NavigationCustomizationTest {
 
     @Test fun failedSaveKeepsTheDraftAvailableForRetry() {
         show(saveSucceeds = false)
-        option(R.string.navigation_placement, R.string.navigation_floating).performClick()
+        option(R.string.navigation_placement, R.string.navigation_docked).performClick()
         rule.onNodeWithText(label(R.string.navigation_apply)).performClick()
         rule.onNodeWithText(label(R.string.navigation_save_failed)).assertIsDisplayed()
-        option(R.string.navigation_placement, R.string.navigation_floating).assertIsOn()
+        option(R.string.navigation_placement, R.string.navigation_docked).assertIsOn()
         rule.runOnIdle { assertTrue(open) }
     }
 
@@ -104,16 +121,16 @@ class NavigationCustomizationTest {
                 NavigationCustomizationScreen(NavigationBarPreferences(), {}, { applied = it; true })
             }
         }
-        option(R.string.navigation_placement, R.string.navigation_floating).performClick()
+        option(R.string.navigation_placement, R.string.navigation_docked).performClick()
         rule.onNodeWithContentDescription(label(R.string.freezer_desc)).performClick()
         restoration.emulateSavedInstanceStateRestore()
-        option(R.string.navigation_placement, R.string.navigation_floating).assertIsOn()
+        option(R.string.navigation_placement, R.string.navigation_docked).assertIsOn()
         rule.onNodeWithContentDescription(label(R.string.freezer_desc)).assertIsSelected()
         rule.runOnIdle { assertNull(applied) }
     }
 
     @Test fun togglingIconsRestoresTheOriginalAutomaticLabelMode() {
-        show()
+        show(NavigationBarPreferences(labels = NavigationLabels.AUTOMATIC))
         option(R.string.navigation_labels, R.string.navigation_automatic).assertIsOn()
         rule.onNodeWithText(label(R.string.navigation_icons)).performScrollTo().assertIsOn().performClick()
         option(R.string.navigation_labels, R.string.navigation_all).assertIsOn().assertIsNotEnabled()
@@ -122,7 +139,7 @@ class NavigationCustomizationTest {
         rule.runOnIdle { assertNull(applied) }
         rule.onNodeWithText(label(R.string.navigation_apply)).performClick()
         rule.waitUntil { !open }
-        rule.runOnIdle { assertEquals(NavigationBarPreferences(), applied) }
+        rule.runOnIdle { assertEquals(NavigationBarPreferences(labels = NavigationLabels.AUTOMATIC), applied) }
     }
 
     @Test fun hiddenIconsDoNotLoseSelectedOnlyLabelsAcrossStateRestoration() {

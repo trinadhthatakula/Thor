@@ -13,9 +13,9 @@ import kotlinx.serialization.Serializable
 /** App-owned, backed-up choices shared by compact navigation and the adaptive rail. */
 @Serializable
 data class NavigationBarPreferences(
-    val placement: NavigationPlacement = NavigationPlacement.DOCKED,
+    val placement: NavigationPlacement = NavigationPlacement.FLOATING,
     val appearance: NavigationAppearance = NavigationAppearance.EXPANDING,
-    val labels: NavigationLabels = NavigationLabels.AUTOMATIC,
+    val labels: NavigationLabels = NavigationLabels.HIDDEN,
     val showIcons: Boolean = true,
     val containerShape: NavigationShape = NavigationShape.DEFAULT,
     val indicatorShape: NavigationShape = NavigationShape.DEFAULT,
