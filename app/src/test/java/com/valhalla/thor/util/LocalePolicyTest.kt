@@ -175,6 +175,7 @@ class LocalePolicyTest {
         "values-pl",
         "values-pt",
         "values-pt-rBR",
+        "values-ru",
         "values-zh-rCN",
     )
 
@@ -843,7 +844,7 @@ class LocalePolicyTest {
         for (directory in shippedResourceDirectories) {
             val expectedCategories = when (directory) {
                 "values-ar" -> setOf("zero", "one", "two", "few", "many", "other")
-                "values-pl" -> setOf("one", "few", "many", "other")
+                "values-pl", "values-ru" -> setOf("one", "few", "many", "other")
                 "values-zh-rCN", "values-ja" -> setOf("other")
                 else -> setOf("one", "other")
             }

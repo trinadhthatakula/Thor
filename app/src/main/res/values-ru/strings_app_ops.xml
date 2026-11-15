@@ -44,7 +44,7 @@
     <string name="app_ops_mode_allow">Разрешить</string>
     <string name="app_ops_mode_ignore">Игнорировать</string>
     <string name="app_ops_mode_deny">Запретить</string>
-    <string name="app_ops_mode_default">Авто</string>
+    <string name="app_ops_mode_default">По умолчанию</string>
     <string name="app_ops_mode_foreground">Только при использовании</string>
     <string name="app_ops_mode_unknown">Неизвестно</string>
     <string name="app_ops_mode_allow_desc">Разрешать эту операцию, если это допускают другие проверки.</string>
