@@ -313,4 +313,5 @@ internal val AppLanguage.labelRes: Int
         AppLanguage.Portuguese -> R.string.portuguese
         AppLanguage.PortugueseBrazil -> R.string.portuguese_brazil
         AppLanguage.Polish -> R.string.polish
+        AppLanguage.Russian -> R.string.russian
     }

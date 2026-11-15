@@ -62,7 +62,7 @@ val hasSigningCredentials: Boolean =
 // the bare `pt` here would filter out European Portuguese and leave `values-pt-rBR` overlaying
 // nothing, since a region folder resolves through its parent language folder.
 val translatedLocales: Set<String> =
-    setOf("en", "ar", "es", "fr", "ja", "pl", "pt", "pt-rBR", "zh-rCN")
+    setOf("en", "ar", "es", "fr", "ja", "pl", "pt", "pt-rBR", "ru", "zh-rCN")
 
 // --- VERSIONING HELPERS (Private & Modernized) ---
 
@@ -392,7 +392,7 @@ androidComponents {
     //
     // Without this filter, disabling the language split would mean every Play install downloading
     // ~70 locales of AndroidX/Material translations it cannot reach: Thor's own UI is one of the
-    // nine in `translatedLocales`, so those library strings (date pickers, accessibility labels)
+    // ten in `translatedLocales`, so those library strings (date pickers, accessibility labels)
     // would render in a language the app is not being displayed in. The filter is what keeps
     // "no per-locale delivery" from meaning "pay for all locales".
     //
