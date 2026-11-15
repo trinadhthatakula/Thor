@@ -34,7 +34,7 @@ internal fun buildSuspendDialogInfo(message: String, title: String): Any? = runC
 
 /** Complete fixed resource strings, including dialogs created before a language switch. */
 internal fun knownThorSuspendDialogs(context: android.content.Context): Set<String> =
-    listOf("en", "ar", "es", "fr", "ja", "pl", "pt", "pt-BR", "zh-CN").mapNotNull { tag ->
+    listOf("en", "ar", "es", "fr", "ja", "pl", "pt", "pt-BR", "ru", "zh-CN").mapNotNull { tag ->
         val configuration = android.content.res.Configuration(context.resources.configuration).apply {
             setLocale(java.util.Locale.forLanguageTag(tag))
         }

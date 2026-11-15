@@ -46,6 +46,7 @@ class ThorTestRunner : AndroidJUnitRunner() {
             "com.valhalla.thor.data.freezer.PrivilegeSweepWorkerIntegrationTest",
             "com.valhalla.thor.data.freezer.PrivilegeSweepServiceIntegrationTest",
             "com.valhalla.thor.data.service.LegacyWorkManagerCutoverIntegrationTest",
+            "com.valhalla.thor.data.source.local.SuspendDialogLocaleTest",
             "com.valhalla.thor.data.source.local.room.PrivilegeSweepDaoTest",
         )
     }
