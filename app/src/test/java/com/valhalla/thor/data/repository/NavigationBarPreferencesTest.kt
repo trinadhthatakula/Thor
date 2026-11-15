@@ -12,7 +12,18 @@ import org.junit.Test
 
 class NavigationBarPreferencesTest {
     @Test fun existingInstallsUseDefaultNavigation() {
-        assertEquals(NavigationBarPreferences(), emptyPreferences().toUserPreferences().navigationBar)
+        val preferences = emptyPreferences().toUserPreferences().navigationBar
+        assertEquals(NavigationPlacement.FLOATING, preferences.placement)
+        assertEquals(NavigationLabels.HIDDEN, preferences.labels)
+        assertTrue(preferences.showIcons)
+    }
+
+    @Test fun savedPreviousDefaultsRemainExplicitChoices() {
+        val saved = """{"placement":"DOCKED","appearance":"EXPANDING","labels":"AUTOMATIC","showIcons":true,"containerShape":"DEFAULT","indicatorShape":"DEFAULT","spacing":4,"floatingMargin":12,"elevation":6,"contentPadding":8}"""
+        val preferences = NavigationPreferencesCodec.decode(saved)
+        assertEquals(NavigationPlacement.DOCKED, preferences.placement)
+        assertEquals(NavigationLabels.AUTOMATIC, preferences.labels)
+        assertEquals(preferences, NavigationPreferencesCodec.decode(NavigationPreferencesCodec.encode(preferences)))
     }
 
     @Test fun customizedNavigationSurvivesStorageRoundTripAlongsideOtherSettings() {
@@ -35,8 +46,9 @@ class NavigationBarPreferencesTest {
     }
 
     @Test fun futureFieldsAndPartialSavedStylesRetainKnownChoices() {
-        val prefs = NavigationPreferencesCodec.decode("{\"placement\":\"FLOATING\",\"futureOption\":true}")
-        assertEquals(NavigationPlacement.FLOATING, prefs.placement)
+        val prefs = NavigationPreferencesCodec.decode("{\"placement\":\"DOCKED\",\"futureOption\":true}")
+        assertEquals(NavigationPlacement.DOCKED, prefs.placement)
+        assertEquals(NavigationLabels.HIDDEN, prefs.labels)
         assertEquals(NavigationAppearance.EXPANDING, prefs.appearance)
     }
 

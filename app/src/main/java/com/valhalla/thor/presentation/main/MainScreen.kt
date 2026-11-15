@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import com.valhalla.thor.presentation.navigation.ThorNavigationScaffold
+import com.valhalla.thor.presentation.navigation.DockedNavigationBar
 import com.valhalla.thor.domain.model.NavigationPlacement
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -649,15 +650,18 @@ fun MainScreen(
                         enter = slideInVertically(initialOffsetY = { it }),
                         exit = slideOutVertically(targetOffsetY = { it })
                     ) {
-                        AsgardNavigationBar(
-                            items = navItems,
-                            selectedIndex = selectedNavIndex,
-                            onSelect = { handleDestinationSelected(AppDestinations.entries[it]) },
-                            configuration = navigationConfiguration(
-                                state.prefs.navigationBar,
-                                scaffoldFloating = floatingNavigation,
-                            ),
-                        )
+                        val bar: @Composable () -> Unit = {
+                            AsgardNavigationBar(
+                                items = navItems,
+                                selectedIndex = selectedNavIndex,
+                                onSelect = { handleDestinationSelected(AppDestinations.entries[it]) },
+                                configuration = navigationConfiguration(
+                                    state.prefs.navigationBar,
+                                    scaffoldFloating = floatingNavigation,
+                                ),
+                            )
+                        }
+                        if (floatingNavigation) bar() else DockedNavigationBar(content = bar)
                     }
                 }
             },
