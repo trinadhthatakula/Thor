@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="support_tab_play_store">Play Маркет</string>
+    <string name="support_tab_direct">Напрямую</string>
+    <string name="rate_play_store_title">Оценить в Play Маркете</string>
+    <string name="rate_play_store_desc">Оставьте отзыв на 5 звёзд, чтобы помочь другим узнать о Thor</string>
+    <string name="explore_other_apps_title">Другие приложения</string>
+    <string name="explore_other_apps_desc">Загляните в мою консоль разработчика и попробуйте другие приложения</string>
+    <string name="billing_error">Ошибка оплаты</string>
+    <string name="change_support_plan_title">Изменить план поддержки?</string>
+    <string name="change_support_plan_desc">Вы уже поддерживаете разработчика по активному плану. Повышение или смена плана отменит вашу старую подписку и заменит её новой. Хотите продолжить?</string>
+    <string name="active_plan">Активный план</string>
+    <string name="billing_purchase_pending">Ожидание оплаты — функция активируется сразу после завершения платежа</string>
+    <string name="billing_price_per_week">%1$s / нед.</string>
+    <string name="billing_price_per_month">%1$s / мес.</string>
+    <string name="billing_price_per_quarter">%1$s / 3 мес.</string>
+    <string name="billing_price_per_half_year">%1$s / 6 мес.</string>
+    <string name="billing_price_per_year">%1$s / год</string>
+</resources>

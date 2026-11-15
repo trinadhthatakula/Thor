@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">Прошивка ядра</string>
+    <string name="kernel_description">Прошейте ZIP-файл ядра AnyKernel3 с помощью root.</string>
+    <string name="kernel_requirements">Требуются root и работающий BusyBox из Magisk, KernelSU или APatch. Другие форматы ZIP и образы загрузки не поддерживаются.</string>
+    <string name="kernel_warning">Прошивайте только пакет из доверенного источника, созданный точно для вашего устройства и прошивки. Его скрипты и исполняемые файлы запускаются с правами root и могут изменить загрузочные разделы, данные и безопасность устройства. Несовместимая или прерванная прошивка может помешать запуску Android. Сохраните заведомо рабочий загрузочный образ и способ его восстановления вне Thor.</string>
+    <string name="kernel_choose">Выбрать ZIP AnyKernel3</string>
+    <string name="kernel_flash">Прошить ядро</string>
+    <string name="kernel_confirm_title">Прошить это ядро?</string>
+    <string name="kernel_acknowledge">Я доверяю этому пакету, проверил совместимость с устройством и располагаю способом восстановления.</string>
+    <string name="kernel_confirmation">После начала прошивку нельзя отменить. Проверка ZIP подтверждает формат, но не совместимость и безопасность. Thor не будет автоматически перезагружать устройство, повторять попытку или восстанавливать предыдущее ядро.</string>
+    <string name="kernel_root_required">Предоставьте Thor права root, чтобы выбрать и прошить ядро.</string>
+    <string name="kernel_preparing">Проверка ZIP…</string>
+    <string name="kernel_starting">Подготовка установщика с правами root…</string>
+    <string name="kernel_running">Прошивка ядра. Не выключайте устройство и не останавливайте Thor принудительно.</string>
+    <string name="kernel_success">Установщик завершился успешно. Совместимость при загрузке не проверена. Просмотрите журнал перед перезагрузкой.</string>
+    <string name="kernel_failed">Операция не выполнена. Проверьте сведения ниже.</string>
+    <string name="kernel_unknown">Результат работы установщика неизвестен. Он может всё ещё работать или частично изменить устройство. Не запускайте другую прошивку. Проверьте журнал и порядок восстановления.</string>
+    <string name="kernel_boot_lock">Другая прошивка заблокирована до следующей загрузки устройства. После неудачной прошивки перезагрузка может потребовать внешнего восстановления.</string>
+    <string name="kernel_save_log">Сохранить журнал</string>
+    <string name="kernel_reboot">Перезагрузить устройство</string>
+    <string name="kernel_reboot_confirm">Перезагрузить устройство сейчас?</string>
+    <string name="kernel_service_blocked">Включите канал уведомлений прошивки ядра и повторите попытку, пока Thor открыт.</string>
+    <string name="kernel_hash">SHA-256: %1$s</string>
+    <string name="kernel_open">Открыть прошивку</string>
+    <string name="kernel_package_heading">1. Пакет ядра</string>
+    <string name="kernel_slot_heading">2. Целевой слот</string>
+    <string name="kernel_change_package">Изменить ZIP</string>
+    <string name="kernel_package_details">Сведения о пакете</string>
+    <string name="kernel_slot_default">По умолчанию для пакета</string>
+    <string name="kernel_slot_current">Текущий слот (%1$s)</string>
+    <string name="kernel_slot_inactive">Неактивный слот (%1$s)</string>
+    <string name="kernel_slot_description">Пакет сам выбирает слот. Используйте только ZIP, созданный для этого устройства.</string>
+    <string name="kernel_slot_unknown">Не удалось определить текущий слот. Пакет выберет целевой слот самостоятельно.</string>
+    <string name="kernel_slot_unsupported">Этот пакет не поддерживает стандартный выбор слота AnyKernel3. Используйте целевой слот по умолчанию.</string>
+    <string name="kernel_single_slot">Устройство не сообщает о слотах A/B. Пакет выберет целевой слот самостоятельно.</string>
+    <string name="kernel_inactive_warning">Используйте неактивный слот только если он содержит совместимую систему. Thor не меняет слот для следующей загрузки.</string>
+    <string name="kernel_before_flash">Перед прошивкой</string>
+    <string name="kernel_safety_summary">Используйте доверенный ZIP для вашего устройства и сохраните образ для восстановления. Перед прошивкой потребуется подтверждение.</string>
+    <string name="kernel_slot_both">Оба слота (A + B)</string>
+    <string name="kernel_both_warning">Установщик будет запущен целиком дважды: сначала для текущего слота, затем для неактивного. Используйте только пакет, автор которого поддерживает повторную установку в обеих установленных системах. Это может заменить оба ядра, лишить вас нетронутого резервного варианта и повторно применить общие изменения. В случае ошибки обновлённым может остаться только один слот. Thor не может откатить изменения или изменить слот для следующей загрузки.</string>
+    <string name="kernel_both_acknowledge">Я понимаю, что оба слота могут измениться, и этот пакет поддерживает обе установленные системы и повторную установку.</string>
+    <string name="kernel_both_partial">Как минимум один проход выполнен успешно, но прошивка обоих слотов не завершилась успешно. Проверьте каждый проход в журнале; откат не выполнялся.</string>
+    <string name="kernel_shared_blocked">Другая операция с ядром выполняется или ожидает новой загрузки. Откройте «Прошивка ядра» в разделе расширений, чтобы проверить её перед передачей другого ZIP.</string>
+</resources>

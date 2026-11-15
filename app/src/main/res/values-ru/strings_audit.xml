@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">Выбрать папку</string>
+    <string name="backup_hub_custom_folder">Другая папка</string>
+    <string name="backup_hub_delete_access">Доступ к хранилищу запрещён. Восстановите доступ к папке и повторите попытку.</string>
+    <string name="backup_hub_delete_failed">Не удалось удалить %1$s.</string>
+    <string name="backup_hub_delete_missing">Архив не найден. Обновите список.</string>
+    <string name="backup_hub_delete_read_only">Это расположение доступно только для чтения.</string>
+    <string name="backup_hub_delete_unavailable">Поставщик хранилища не завершил удаление. Проверьте расположение и повторите попытку.</string>
+    <string name="backup_hub_empty_saved_desc">Создайте резервную копию или экспортируйте приложение, чтобы оно появилось здесь.</string>
+    <string name="backup_hub_empty_saved_title">Нет сохранённых архивов</string>
+    <string name="backup_hub_folder_failed">Не удалось сохранить доступ к этой папке. Выберите её снова.</string>
+    <string name="backup_hub_folder_hint">Выберите папку для экспорта и сохранённых архивов.</string>
+    <string name="backup_hub_newest">Сначала новые</string>
+    <string name="backup_hub_no_matches">Нет архивов, соответствующих поиску или фильтру.</string>
+    <string name="backup_hub_saved_archives">Сохранённые архивы</string>
+    <string name="backup_hub_scan_failed">Не удалось обновить список сохранённых архивов. Повторите попытку.</string>
+    <string name="backup_hub_search_archives">Поиск сохранённых архивов</string>
+    <string name="backup_hub_source_unavailable">Не удалось полностью прочитать %1$s. Некоторые архивы могут отсутствовать в списке.</string>
+    <string name="installer_app_lock">Распространить блокировку на установщик</string>
+    <string name="installer_app_lock_desc">Также требовать подтверждение личности для автономного установщика и Bolt и защищать их снимки экрана и превью в списке недавних приложений. Требуется блокировка приложения.</string>
+    <string name="installer_lock_include">Включить установщик</string>
+    <string name="installer_lock_main_only">Только основное приложение</string>
+    <string name="installer_lock_not_saved">Не удалось сохранить настройку блокировки установщика. Повторите попытку.</string>
+    <string name="installer_lock_prompt_desc">Также требовать подтверждение личности при открытии автономного установщика или Bolt? Это защитит их снимки экрана и превью в списке недавних приложений. Позже настройку можно изменить в разделе безопасности.</string>
+    <string name="installer_lock_prompt_title">Включить установщик в блокировку приложения?</string>
+    <string name="kernel_refresh_root">Обновить доступ root</string>
+    <string name="log_jump_latest">Перейти к последнему</string>
+    <string name="log_jump_latest_new_output">Новые записи · Перейти к последнему</string>
+</resources>

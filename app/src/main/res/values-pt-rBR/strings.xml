@@ -51,6 +51,7 @@
     <string name="app_language_desc">O idioma das telas do próprio Thor</string>
     <string name="system_default">Padrão do sistema</string>
     <string name="polish">Polonês</string>
+    <string name="russian">Russo</string>
 
     <!-- Common Actions -->
     <string name="installed_label">INSTALADO</string>

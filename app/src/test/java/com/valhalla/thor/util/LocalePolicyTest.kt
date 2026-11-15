@@ -240,6 +240,7 @@ class LocalePolicyTest {
         assertEquals(AppLanguage.Spanish, languageForTag("es-419"))
         assertEquals(AppLanguage.Arabic, languageForTag("ar-EG"))
         assertEquals(AppLanguage.English, languageForTag("en-GB"))
+        assertEquals(AppLanguage.Russian, languageForTag("ru-RU"))
     }
 
     /**
@@ -366,7 +367,8 @@ class LocalePolicyTest {
             AppLanguage.Arabic to true,
             AppLanguage.Portuguese to false,
             AppLanguage.PortugueseBrazil to false,
-            AppLanguage.Polish to false
+            AppLanguage.Polish to false,
+            AppLanguage.Russian to false
         )
         for (language in AppLanguage.entries) {
             val locale = localeForTag(language.tag) ?: continue
@@ -515,6 +517,7 @@ class LocalePolicyTest {
         assertTrue(isRedundantLanguageRequest(requestedTag = "ar", inEffectTag = "ar-EG"))
         assertTrue(isRedundantLanguageRequest(requestedTag = "en", inEffectTag = "en-GB"))
         assertTrue(isRedundantLanguageRequest(requestedTag = "pl", inEffectTag = "pl-PL"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "ru", inEffectTag = "ru-RU"))
     }
 
     /**
@@ -532,7 +535,7 @@ class LocalePolicyTest {
             AppLanguage.PICKER_ORDER.distinct().size
         )
         assertEquals(
-            listOf(null, "en", "zh", "ja", "fr", "es", "ar", "pt-PT", "pt-BR", "pl"),
+            listOf(null, "en", "zh", "ja", "fr", "es", "ar", "pt-PT", "pt-BR", "pl", "ru"),
             AppLanguage.PICKER_ORDER.map { it.tag }
         )
     }
