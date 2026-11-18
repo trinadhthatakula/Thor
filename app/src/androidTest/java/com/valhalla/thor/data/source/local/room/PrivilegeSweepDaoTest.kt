@@ -3,12 +3,14 @@
 
 package com.valhalla.thor.data.source.local.room
 
+import androidx.room3.support.getSupportWrapper
 import android.content.Context
-import androidx.room.Room
-import androidx.room.RoomDatabase
-import androidx.sqlite.db.SupportSQLiteDatabase
-import androidx.sqlite.db.SupportSQLiteOpenHelper
-import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.room3.Room
+import androidx.room3.RoomDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.SQLiteDriver
+import androidx.sqlite.SQLiteStatement
+import androidx.sqlite.driver.AndroidSQLiteDriver
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -120,7 +122,7 @@ class PrivilegeSweepDaoTest {
             assertFalse(dao.markUnclaimedStartBlocked(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_000))
             assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(0), SERVICE_EXECUTION_ID, 2_000))
             assertEquals(before, dao.load(REQUEST_1))
-            database.openHelper.writableDatabase.execSQL("UPDATE sweep_requests SET state='BLOCKED', block_reason='START_BLOCKED' WHERE request_id=?", arrayOf(REQUEST_1))
+            database.getSupportWrapper().execSQL("UPDATE sweep_requests SET state='BLOCKED', block_reason='START_BLOCKED' WHERE request_id=?", arrayOf(REQUEST_1))
             assertFalse(dao.resumeBlockedRequest(REQUEST_1, StoredSweepBlockReason.START_BLOCKED, 2_100))
             deleteSweep()
         }
@@ -157,7 +159,7 @@ class PrivilegeSweepDaoTest {
     fun legacyConversionRejectsBrokenIdempotentPostconditionAndCompletedOrdinal() = runBlocking {
         for (column in listOf("finished_at_epoch_ms=5", "result_code='BAD'", "root_lane_degraded=1")) {
             insertSweep(requestId = REQUEST_1, targetStates = listOf(StoredSweepTargetState.LEGACY_UNKNOWN, StoredSweepTargetState.PENDING))
-            database.openHelper.writableDatabase.execSQL("UPDATE sweep_targets SET $column WHERE request_id=? AND ordinal=0", arrayOf(REQUEST_1))
+            database.getSupportWrapper().execSQL("UPDATE sweep_targets SET $column WHERE request_id=? AND ordinal=0", arrayOf(REQUEST_1))
             val before = dao.load(REQUEST_1)
             assertFalse(dao.markLegacyTargetsUnknown(REQUEST_1, listOf(1, 0), SERVICE_EXECUTION_ID, 2_000))
             assertEquals(before, dao.load(REQUEST_1))
@@ -837,7 +839,7 @@ class PrivilegeSweepDaoTest {
 
             val decision = runCatching { dao.requestCancellation(REQUEST_1, 2_000L) }
             val unchanged = before == requireNotNull(dao.load(REQUEST_1))
-            database.openHelper.writableDatabase.execSQL(
+            database.getSupportWrapper().execSQL(
                 "DELETE FROM sweep_requests WHERE request_id = ?",
                 arrayOf(REQUEST_1),
             )
@@ -1047,7 +1049,7 @@ class PrivilegeSweepDaoTest {
     fun unknownOnlyRequestRecoveryBlocksWithoutInventingSuccess() = runBlocking {
         insertSweep(requestId = REQUEST_1)
         dao.claimOldestRunnableRequest("previous-session", "request-claim", 2_000L, 3_000L)
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE sweep_targets SET state = 'UNKNOWN' WHERE request_id = ?",
             arrayOf(REQUEST_1),
         )
@@ -1134,15 +1136,15 @@ class PrivilegeSweepDaoTest {
         dao.claimOldestRunnableRequest("previous-session", "claim-1", 2_000L, 3_000L)
         dao.claimOldestRunnableRequest("previous-session", "claim-2", 2_000L, 3_000L)
         dao.claimOldestRunnableRequest("previous-session", "claim-3", 2_000L, 3_000L)
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE sweep_requests SET service_session_token = NULL WHERE request_id = ?",
             arrayOf(REQUEST_1),
         )
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE sweep_requests SET claim_token = NULL WHERE request_id = ?",
             arrayOf(REQUEST_2),
         )
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE sweep_requests SET claim_lease_expires_at_epoch_ms = NULL WHERE request_id = ?",
             arrayOf(REQUEST_3),
         )
@@ -1276,7 +1278,7 @@ class PrivilegeSweepDaoTest {
 
             val recovered = dao.recoverInterruptedTarget(candidate, recovery)
             val unchanged = before == requireNotNull(dao.load(requestId))
-            database.openHelper.writableDatabase.execSQL(
+            database.getSupportWrapper().execSQL(
                 "DELETE FROM sweep_requests WHERE request_id = ?",
                 arrayOf(requestId),
             )
@@ -1558,9 +1560,9 @@ class PrivilegeSweepDaoTest {
         val insertionCompleted = CompletableDeferred<Unit>()
         val stopDecisionMade = AtomicBoolean(false)
         val writerProbe = WriterTransactionProbe()
-        val inserterDatabase = buildDatabase(WriterTrackingOpenHelperFactory(writerProbe))
+        val inserterDatabase = buildDatabase(WriterTrackingDriver(writerProbe))
         val inserterDao = inserterDatabase.privilegeSweepDao()
-        inserterDatabase.openHelper.writableDatabase
+        inserterDatabase.getSupportWrapper().query("SELECT 1").close()
 
         try {
             coroutineScope {
@@ -1611,14 +1613,14 @@ class PrivilegeSweepDaoTest {
     }
 
     private fun buildDatabase(
-        openHelperFactory: SupportSQLiteOpenHelper.Factory? = null,
+        driver: SQLiteDriver = AndroidSQLiteDriver(),
     ): AppDatabase {
         val builder = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             DATABASE_NAME,
         ).setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        openHelperFactory?.let(builder::openHelperFactory)
+        builder.setDriver(driver)
         return builder.build()
     }
 
@@ -1696,7 +1698,7 @@ class PrivilegeSweepDaoTest {
         claimToken: String?,
         leaseUntilMs: Long?,
     ) {
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             """
             UPDATE sweep_targets
             SET claim_token = ?,
@@ -1712,7 +1714,7 @@ class PrivilegeSweepDaoTest {
         claimToken: String?,
         leaseUntilMs: Long?,
     ) {
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             """
             UPDATE sweep_requests
             SET service_session_token = ?,
@@ -1728,7 +1730,7 @@ class PrivilegeSweepDaoTest {
         sessionToken: String,
         claimToken: String,
     ) {
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             """
             UPDATE sweep_requests
             SET service_session_token = ?,
@@ -1741,7 +1743,7 @@ class PrivilegeSweepDaoTest {
     }
 
     private fun deleteSweep() {
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "DELETE FROM sweep_requests WHERE request_id = ?",
             arrayOf(REQUEST_1),
         )
@@ -1805,37 +1807,30 @@ class PrivilegeSweepDaoTest {
         }
     }
 
-    private class WriterTrackingOpenHelperFactory(
+    private class WriterTrackingDriver(
         private val probe: WriterTransactionProbe,
-        private val delegate: SupportSQLiteOpenHelper.Factory = FrameworkSQLiteOpenHelperFactory(),
-    ) : SupportSQLiteOpenHelper.Factory {
-        override fun create(
-            configuration: SupportSQLiteOpenHelper.Configuration,
-        ): SupportSQLiteOpenHelper = WriterTrackingOpenHelper(
-            delegate = delegate.create(configuration),
-            probe = probe,
-        )
+        private val delegate: SQLiteDriver = AndroidSQLiteDriver(),
+    ) : SQLiteDriver by delegate {
+        override fun open(fileName: String): SQLiteConnection =
+            WriterTrackingConnection(delegate.open(fileName), probe)
     }
 
-    private class WriterTrackingOpenHelper(
-        private val delegate: SupportSQLiteOpenHelper,
+    private class WriterTrackingConnection(
+        private val delegate: SQLiteConnection,
         private val probe: WriterTransactionProbe,
-    ) : SupportSQLiteOpenHelper by delegate {
-        override val writableDatabase: SupportSQLiteDatabase
-            get() = WriterTrackingDatabase(delegate.writableDatabase, probe)
-
-        override val readableDatabase: SupportSQLiteDatabase
-            get() = WriterTrackingDatabase(delegate.readableDatabase, probe)
-    }
-
-    private class WriterTrackingDatabase(
-        private val delegate: SupportSQLiteDatabase,
-        private val probe: WriterTransactionProbe,
-    ) : SupportSQLiteDatabase by delegate {
-        override fun beginTransactionNonExclusive() {
-            probe.onTransactionAttempted()
-            delegate.beginTransactionNonExclusive()
-            probe.onTransactionAcquired()
+    ) : SQLiteConnection by delegate {
+        override fun prepare(sql: String): SQLiteStatement {
+            val statement = delegate.prepare(sql)
+            // Room's writer transaction acquires the same platform SQLite writer lock here.
+            if (!sql.trimStart().startsWith("BEGIN IMMEDIATE", ignoreCase = true)) return statement
+            return object : SQLiteStatement by statement {
+                override fun step(): Boolean {
+                    probe.onTransactionAttempted()
+                    val result = statement.step()
+                    probe.onTransactionAcquired()
+                    return result
+                }
+            }
         }
     }
 

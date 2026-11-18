@@ -30,7 +30,7 @@
     <string name="settings_summary_restore_interrupted">復元が完了しませんでした</string>
     <string name="settings_summary_backup">アーカイブの復元やパスフレーズの変更</string>
     <string name="settings_summary_unprivileged">Root、Shizuku、または Dhizuku が必要です</string>
-    <string name="settings_summary_customization">フォントと操作の配置</string>
+    <string name="settings_summary_customization">フォント、ナビゲーション、アクションの配置</string>
     <string name="settings_category_customization">カスタマイズ</string>
     <string name="customization_fonts">フォント</string>
     <string name="customization_fonts_desc">Asgard またはシステム フォントを選択します。変更はすぐに適用されます。</string>

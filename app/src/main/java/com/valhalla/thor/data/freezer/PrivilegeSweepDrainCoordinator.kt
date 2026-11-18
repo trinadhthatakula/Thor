@@ -203,7 +203,7 @@ internal class RoomPrivilegeSweepDrainRuntime(
     ): PrivilegeSweepTargetResult = when (outcome) {
         SweepAttemptOutcome.SUCCEEDED -> PrivilegeSweepTargetResult(
             PrivilegeSweepTargetTerminalState.SUCCEEDED,
-            PrivilegeSweepResultCode("SUCCEEDED"),
+            PrivilegeSweepResultCode(if (externalSuspensionRemains) "EXTERNAL_SUSPENSION_REMAINS" else "SUCCEEDED"),
             rootLaneDegraded = rootLaneDegraded,
             finishedAtEpochMs = nowMs,
         )

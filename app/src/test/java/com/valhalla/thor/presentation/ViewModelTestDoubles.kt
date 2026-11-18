@@ -189,7 +189,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ) = record("setAppSuspended:$packageName:$isSuspended", execution)
+    ) = record("setAppSuspended:$packageName:$isSuspended", execution).map { com.valhalla.thor.domain.model.SuspensionChange() }
 
     override suspend fun setAppRestricted(
         packageName: String,
@@ -688,12 +688,14 @@ class FakePreferenceRepository(
         write { it.copy(appSortOrder = sortOrder) }
     }
 
+    /** Models source-specific filter writes, including normalization and simulated disk failure. */
     override suspend fun updateAppFilter(appListType: AppListType, filterType: FilterType, selectedFilter: String) {
         val filter = AppFilterPreferences(filterType, selectedFilter).normalizedFor(appListType)
         write {
             when (appListType) {
                 AppListType.USER -> it.copy(userAppFilter = filter)
                 AppListType.SYSTEM -> it.copy(systemAppFilter = filter)
+                AppListType.ALL -> it.copy(combinedAppFilter = filter)
             }
         }
     }
@@ -702,9 +704,18 @@ class FakePreferenceRepository(
         write { it.copy(showReinstallAllCard = isVisible) }
     }
 
+    /** Models opt-in persistence through the same failure simulation as other preference writes. */
+    override suspend fun setCombinedAppListsEnabled(enabled: Boolean) {
+        write { it.copy(combinedAppListsEnabled = enabled) }
+    }
+
     override suspend fun setDefaultTab(tab: DefaultTab) {
         write { it.copy(defaultTab = tab) }
     }
+
+    /** Normalizes successful style writes and returns false without changing state on failure. */
+    override suspend fun setNavigationBarPreferences(preferences: com.valhalla.thor.domain.model.NavigationBarPreferences): Boolean =
+        write { it.copy(navigationBar = preferences.normalized()) }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
         write { it.copy(showInstallerTile = isVisible) }
@@ -730,8 +741,12 @@ class FakePreferenceRepository(
         write { it.copy(useAmoled = enabled) }
     }
 
-    override suspend fun setBiometricLock(enabled: Boolean): Boolean =
-        write(announce = false) { it.copy(biometricLockEnabled = enabled) }
+    override suspend fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean?): Boolean =
+        write(announce = false) { it.copy(biometricLockEnabled = enabled,
+            installerAppLockEnabled = extendToInstaller ?: it.installerAppLockEnabled) }
+
+    override suspend fun setInstallerAppLock(enabled: Boolean): Boolean =
+        write(announce = false) { it.copy(installerAppLockEnabled = enabled) }
 
     override suspend fun setPrivilegeMode(mode: PrivilegeMode?) {
         write { it.copy(preferredPrivilegeMode = mode) }
@@ -744,16 +759,15 @@ class FakePreferenceRepository(
     override suspend fun setLanguage(language: String?): Boolean =
         write(announce = false) { it.copy(language = language) }
 
-    override suspend fun setExportDirUri(uri: String?) {
+    override suspend fun setExportDirUri(uri: String?): Boolean =
         write { it.copy(exportDirUri = uri) }
-    }
 
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         write { it.copy(autoFreezeEnabled = enabled) }
     }
 
-    override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
-        write { it.copy(addFreezerToLauncher = enabled) }
+    override suspend fun setDisableShortcuts(disabled: Boolean) {
+        write { it.copy(disableShortcuts = disabled) }
     }
 
     override suspend fun setFreezerMode(mode: FreezerMode) {
@@ -1138,7 +1152,7 @@ class FakeAppShortcutController(
     val refreshed = mutableListOf<String>()
     val pinned = mutableListOf<String>()
     val pinnedBulkActions = mutableListOf<String>()
-    val dynamicSyncs = mutableListOf<Boolean>()
+    val shortcutSyncs = mutableListOf<Boolean>()
 
     /**
      * Failures the *port* absorbed instead of handing to its caller — see [pinAppShortcut].
@@ -1239,8 +1253,8 @@ class FakeAppShortcutController(
         pinnedBulkActions += action
     }
 
-    override fun syncDynamicShortcuts(enabled: Boolean) {
-        dynamicSyncs += enabled
+    override fun syncShortcuts(enabled: Boolean) {
+        shortcutSyncs += enabled
     }
 }
 

@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.NavigationBarPreferences
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
@@ -68,6 +69,8 @@ interface PreferenceRepository {
     fun acknowledgeSettingsWriteFailure()
 
     // --- App List ---
+    /** Enables combined source selection without replacing any saved filter profile. */
+    suspend fun setCombinedAppListsEnabled(enabled: Boolean)
     suspend fun updateAppSort(sortBy: SortBy)
     suspend fun updateAppSortOrder(sortOrder: SortOrder)
     suspend fun updateAppFilter(
@@ -79,6 +82,8 @@ interface PreferenceRepository {
 
     // --- Navigation ---
     suspend fun setDefaultTab(tab: DefaultTab)
+    /** Atomically saves the whole style; false leaves the draft open for retry. */
+    suspend fun setNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean
 
     // --- Home tiles ---
     suspend fun setInstallerTileVisibility(isVisible: Boolean)
@@ -100,7 +105,9 @@ interface PreferenceRepository {
      * unlocked after Thor has said it armed it. "Some settings could not be saved" does not tell
      * anyone which way their front door is facing.
      */
-    suspend fun setBiometricLock(enabled: Boolean): Boolean
+    suspend fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean? = null): Boolean
+
+    suspend fun setInstallerAppLock(enabled: Boolean): Boolean
 
     // --- Work Mode ---
     suspend fun setPrivilegeMode(mode: PrivilegeMode?)
@@ -120,11 +127,11 @@ interface PreferenceRepository {
     suspend fun setLanguage(language: String?): Boolean
 
     // --- Export ---
-    suspend fun setExportDirUri(uri: String?)
+    suspend fun setExportDirUri(uri: String?): Boolean
 
     // --- Auto Freeze ---
     suspend fun setAutoFreezeEnabled(enabled: Boolean)
-    suspend fun setAddFreezerToLauncher(enabled: Boolean)
+    suspend fun setDisableShortcuts(disabled: Boolean)
     suspend fun setFreezerMode(mode: FreezerMode)
     suspend fun setSkipRoutineFreezeConfirmation(enabled: Boolean)
     suspend fun setAllowSystemAppRemovalFallback(enabled: Boolean)

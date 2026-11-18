@@ -3,6 +3,9 @@
 
 package com.valhalla.thor.util
 
+import com.valhalla.thor.domain.model.SuspensionFailureReason
+import com.valhalla.thor.domain.model.SuspensionPolicyException
+import com.valhalla.thor.domain.model.SuspensionChange
 import android.content.Context
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
@@ -188,6 +191,20 @@ class UiTextException(val uiText: UiText) : Exception() {
  * `launchGuarded` catch instead. Two sites unwrapping the same type by hand is what produced the
  * empty-toast asymmetry, so both go through here.
  */
-fun Throwable.asUiText(): UiText =
-    if (this is UiTextException) uiText
-    else UiText.StringResource(R.string.error_format, message ?: "")
+fun Throwable.asUiText(): UiText = when (this) {
+    is UiTextException -> uiText
+    is SuspensionPolicyException -> UiText.StringResource(when (reason) {
+        SuspensionFailureReason.OWNERSHIP_UNKNOWN -> R.string.suspension_ownership_unknown
+        SuspensionFailureReason.CANNOT_KEEP_INDEPENDENT -> R.string.suspend_independent_unavailable
+        SuspensionFailureReason.WRONG_PRIVILEGE -> R.string.suspend_wrong_privilege
+        SuspensionFailureReason.NOT_VERIFIED -> R.string.suspension_change_unverified
+    })
+    else -> UiText.StringResource(R.string.error_format, message ?: "")
+}
+
+fun SuspensionChange.restorationFeedback(appName: String): UiText =
+    when {
+        ownershipUnknown -> UiText.StringResource(R.string.suspension_ownership_unknown)
+        remainingOwners.isEmpty() -> UiText.StringResource(R.string.unfrozen_success, appName)
+        else -> UiText.StringResource(R.string.thaw_external_pause, appName, remainingOwners.sorted().joinToString())
+    }

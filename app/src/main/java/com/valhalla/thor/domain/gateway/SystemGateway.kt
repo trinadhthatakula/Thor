@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.gateway
 
+import com.valhalla.thor.domain.model.SuspensionChange
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 
 /**
@@ -36,11 +37,14 @@ interface SystemGateway {
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
     ): Result<Unit>
 
+    /** Read-only provenance check. Null means ownership cannot be verified. */
+    suspend fun isAppSuspendedByThor(packageName: String): Boolean? = null
+
     suspend fun setAppSuspended(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext(),
-    ): Result<Unit>
+    ): Result<SuspensionChange>
 
     suspend fun setAppRestricted(
         packageName: String,

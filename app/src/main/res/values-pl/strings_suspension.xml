@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">Pominięto wstrzymanie: Thor nie może zweryfikować osobnego wstrzymania. Użyj trybu zamrażania; istniejące ograniczenia zachowano.</string>
+    <string name="suspension_ownership_unknown">Thor nie mógł zweryfikować właściciela wstrzymania. Zachowano istniejące wstrzymanie; sprawdź ograniczenie aplikacji i spróbuj ponownie.</string>
+    <string name="suspension_change_unverified">Thor nie mógł zweryfikować zmiany wstrzymania. Odśwież i spróbuj ponownie.</string>
+    <string name="suspend_wrong_privilege">Wstrzymanie przez Thor należy do innego trybu uprawnień. Wróć do tego trybu, aby je usunąć.</string>
+    <string name="thaw_external_pause">%1$s: ograniczenie Thor usunięto; nadal wstrzymana przez %2$s.</string>
+    <string name="thaw_external_pause_generic">%1$s: ograniczenie Thor usunięto; nadal wstrzymana przez inną aplikację.</string>
+    <string name="sweep_external_pause_notice">Niektóre przywrócone aplikacje są nadal wstrzymane przez inne aplikacje.</string>
+</resources>

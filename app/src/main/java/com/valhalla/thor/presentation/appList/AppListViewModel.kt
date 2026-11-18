@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.util.restorationFeedback
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -94,6 +95,7 @@ data class AppListUiState(
     val suspendedOnly: Boolean = false,
     // Filter State
     val appListType: AppListType = AppListType.USER,
+    val combinedAppListsEnabled: Boolean = false,
     val filterType: FilterType = FilterType.Source,
     val selectedFilter: String = "All",
     val searchQuery: String = "",
@@ -233,6 +235,7 @@ class AppListViewModel(
 
     init {
         loadApps(deferForTransition = true)
+        observeCombinedAppLists()
         observeSizeSort()
         observeFreezerMembership()
         observePermissionFilter()
@@ -557,17 +560,17 @@ class AppListViewModel(
             // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
             // view model rather than by AppRiskDialog declining to render a confirm button.
             // Unfreezing keeps the raw call: it must never be blocked.
-            val result = if (freeze) freezeAppUseCase(packageName)
-            else manageAppUseCase.setAppDisabled(packageName, false)
-            result.onSuccess {
+            val result = if (freeze) freezeAppUseCase(packageName).map { com.valhalla.thor.domain.model.SuspensionChange() }
+            else manageAppUseCase.forceUnfreeze(packageName)
+            result.onSuccess { restoration ->
                 // Update the app's enabled state in our local list immediately for UI responsiveness
                 _rawState.update { state ->
                     state.copy(
                         allUserApps = state.allUserApps.map {
-                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.suspensionRemains) else it
                         },
                         allSystemApps = state.allSystemApps.map {
-                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                            if (it.packageName == packageName) it.copy(enabled = !freeze, isSuspended = if (freeze) it.isSuspended else restoration.suspensionRemains) else it
                         }
                     )
                 }
@@ -615,10 +618,7 @@ class AppListViewModel(
                 } else {
                     _events.send(
                         AppListEvent.ShowMessage(
-                            UiText.StringResource(
-                                R.string.unfrozen_success,
-                                appName ?: packageName
-                            ), isSuccess = true
+                            restoration.restorationFeedback(appName ?: packageName), isSuccess = true
                         )
                     )
                 }
@@ -756,7 +756,11 @@ class AppListViewModel(
                 }
                 // Latched between the privileged call and the durable one, which is the only place
                 // it can be right: past here the app is thawed whatever the rest of this block does.
+                val restoredState = restored.getOrThrow()
                 unfrozenLabel = app?.appName ?: packageName
+                if (restoredState.suspensionRemains) {
+                    _events.send(AppListEvent.ShowMessage(restoredState.restorationFeedback(unfrozenLabel)))
+                }
                 // Same optimistic local patch freezeApp does, so the row stops reading as frozen
                 // without waiting for a full rescan. Ordered ahead of the two steps that can throw,
                 // because it cannot: it is a CAS over two `List.map`s, touching neither Room nor the
@@ -767,7 +771,7 @@ class AppListViewModel(
                     fun restore(list: List<AppInfo>) = list.map {
                         if (it.packageName == packageName) it.copy(
                             enabled = true,
-                            isSuspended = false
+                            isSuspended = restoredState.suspensionRemains
                         )
                         else it
                     }
@@ -934,9 +938,27 @@ class AppListViewModel(
         _rawState.update { it.copy(selectedAppDetails = null) }
     }
 
+    /** Tracks the opt-in, returning a combined view to User when multiselect is disabled. */
+    private fun observeCombinedAppLists() {
+        viewModelScope.launch {
+            preferenceRepository.userPreferences
+                .map { it.combinedAppListsEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    _rawState.update {
+                        it.copy(
+                            combinedAppListsEnabled = enabled,
+                            appListType = it.appListType.forCombinedLists(enabled),
+                        )
+                    }
+                }
+        }
+    }
+
+    /** Changes the session source within the opt-in policy and restores its saved filter profile. */
     fun updateListType(type: AppListType) {
-        // The tab is session-only; its saved filter is restored by the preference combine.
-        _rawState.update { it.copy(appListType = type) }
+        // The source selection is session-only; its saved filter is restored by the combine.
+        _rawState.update { it.copy(appListType = type.forCombinedLists(it.combinedAppListsEnabled)) }
     }
 
     /**
@@ -948,9 +970,10 @@ class AppListViewModel(
      * The destination's category and selection are saved together; the other tab is untouched.
      */
     fun showAppsFromInstaller(type: AppListType, installerPackageName: String) {
-        _rawState.update { it.copy(appListType = type) }
+        val destination = type.forCombinedLists(_rawState.value.combinedAppListsEnabled)
+        _rawState.update { it.copy(appListType = destination) }
         viewModelScope.launch {
-            preferenceRepository.updateAppFilter(type, FilterType.Source, installerPackageName)
+            preferenceRepository.updateAppFilter(destination, FilterType.Source, installerPackageName)
         }
     }
 
@@ -1062,10 +1085,12 @@ class AppListViewModel(
         }
     }
 
+    /** Builds the searched, filtered and sorted source list, tracking UAD readiness on system apps. */
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
         val rawList = when {
-            state.suspendedOnly -> state.allUserApps + state.allSystemApps
+            state.suspendedOnly || state.appListType == AppListType.ALL ->
+                state.allUserApps + state.allSystemApps
             state.appListType == AppListType.USER -> state.allUserApps
             else -> state.allSystemApps
         }

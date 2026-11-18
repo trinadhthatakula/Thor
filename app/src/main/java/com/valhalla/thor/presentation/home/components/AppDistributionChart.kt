@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +37,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.presentation.home.InstallerSlice
 import com.valhalla.thor.util.UiText
@@ -150,23 +151,16 @@ private fun LegendGrid(
     onInstallerClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        slices.chunked(2).forEach { rowSlices ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                rowSlices.forEach { slice ->
-                    LegendItem(
-                        slice = slice,
-                        onInstallerClick = onInstallerClick,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (rowSlices.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
+    val textScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val columns = if (maxWidth >= 320.dp * textScale + 16.dp) 2 else 1
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            slices.chunked(columns).forEach { rowSlices ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    rowSlices.forEach { slice ->
+                        LegendItem(slice, onInstallerClick, Modifier.weight(1f))
+                    }
+                    if (rowSlices.size < columns) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -201,15 +195,13 @@ private fun LegendItem(
                 .background(slice.color, CircleShape)
         )
         Spacer(Modifier.width(12.dp))
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(
-                text = slice.label.asString().uppercase(),
+                text = slice.label.asString(),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                // Let long names wrap; these labels identify navigation destinations.
             )
             Text(
                 text = slice.count.toString(),

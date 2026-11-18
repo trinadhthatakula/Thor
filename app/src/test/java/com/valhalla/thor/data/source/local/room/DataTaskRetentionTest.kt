@@ -3,9 +3,10 @@
 
 package com.valhalla.thor.data.source.local.room
 
+import androidx.room3.support.getSupportWrapper
 import android.app.Application
 import android.content.Context
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.backup.job.DataTaskStore
 import com.valhalla.thor.domain.model.AppShareRequest
@@ -330,13 +331,13 @@ class DataTaskRetentionTest {
         requireNotNull(store.loadTask(taskId))
 
     private fun execute(sql: String, vararg values: Any?) {
-        database.openHelper.writableDatabase.execSQL(sql, values)
+        database.getSupportWrapper().execSQL(sql, values)
     }
 
     private fun storedRows(): Map<String, List<List<String?>>> =
         listOf("data_tasks", "export_task_details", "data_task_items", "data_task_outputs")
             .associateWith { table ->
-                database.openHelper.readableDatabase.query("SELECT * FROM $table ORDER BY 1, 2").use { cursor ->
+                database.getSupportWrapper().query("SELECT * FROM $table ORDER BY 1, 2").use { cursor ->
                     buildList {
                         while (cursor.moveToNext()) {
                             add(List(cursor.columnCount) { index ->

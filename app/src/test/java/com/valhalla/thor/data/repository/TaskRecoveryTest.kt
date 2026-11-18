@@ -3,11 +3,12 @@
 
 package com.valhalla.thor.data.repository
 
+import androidx.room3.support.getSupportWrapper
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.job.*
@@ -835,7 +836,7 @@ class TaskRecoveryTest {
     }
 
     private fun sql(statement: String) {
-        database.openHelper.writableDatabase.execSQL(statement)
+        database.getSupportWrapper().execSQL(statement)
     }
 
     class RecordingKeyFactory : SecretKeyFactorySpi() {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">Приостановка пропущена: Thor не может проверить отдельную приостановку. Используйте режим заморозки; существующие ограничения сохранены.</string>
+    <string name="suspension_ownership_unknown">Thor не удалось проверить, кем установлена приостановка. Существующая пауза сохранена; повторите попытку после проверки ограничения приложения.</string>
+    <string name="suspension_change_unverified">Thor не удалось проверить изменение приостановки. Обновите данные и повторите попытку.</string>
+    <string name="suspend_wrong_privilege">Приостановка Thor принадлежит другому режиму привилегий. Вернитесь в этот режим, чтобы снять её.</string>
+    <string name="thaw_external_pause">%1$s: ограничение Thor снято; приложение всё ещё приостановлено: %2$s.</string>
+    <string name="thaw_external_pause_generic">%1$s: ограничение Thor снято; приложение всё ещё приостановлено другим приложением.</string>
+    <string name="sweep_external_pause_notice">Некоторые восстановленные приложения остаются приостановленными другими приложениями.</string>
+</resources>

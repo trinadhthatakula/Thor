@@ -3,9 +3,10 @@
 
 package com.valhalla.thor.data.repository
 
+import androidx.room3.support.getSupportWrapper
 import android.app.Application
 import android.database.sqlite.SQLiteConstraintException
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.FreezerEntity
@@ -108,7 +109,7 @@ class FreezeProfileRepositoryAssignmentTest {
     fun `freezer enrollment failure rolls back profile appends and earlier freezer insertions`() = runTest {
         val profile = repository.create("Games", listOf("com.example.retained"))
         database.freezerDao().insert(FreezerEntity("com.example.retained"))
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             """
             CREATE TRIGGER reject_freezer_enrollment
             BEFORE INSERT ON freezer_apps
@@ -185,7 +186,7 @@ class FreezeProfileRepositoryAssignmentTest {
         val before = repository.observeProfiles().first()
         // Fail after the first profile's inserts have run, exercising Room's outer transaction
         // rather than only a pre-write check or one INSERT statement's own rollback.
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             """
             CREATE TRIGGER reject_second_profile_assignment
             BEFORE INSERT ON freeze_profile_apps

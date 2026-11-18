@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
@@ -170,6 +171,65 @@ class FreezerViewModelTest {
         (single() as FreezerEvent.ShowToast).message
 
     @Test
+    fun `opted in mixed freezer list includes both sources and clears hidden selections`() = runTest {
+        val imported = listOf(userApp("user.notes", enabled = false)) +
+            (1..4).map { userApp("system.$it", enabled = false).copy(isSystem = true) }
+        appRepository.apps.value = imported
+        imported.forEach { freezer.add(it.packageName) }
+        prefs.setCombinedAppListsEnabled(true)
+        val vm = viewModel()
+        runCurrent()
+        vm.updateListType(AppListType.ALL)
+        assertEquals(AppListType.ALL, vm.uiState.value.appListType)
+        assertEquals(5, vm.uiState.value.freezerApps.filter(vm.uiState.value.appListType::includes).size)
+        vm.selectAll(imported.map { it.packageName })
+        vm.updateListType(AppListType.USER)
+        assertTrue(vm.uiState.value.multiSelection.isEmpty())
+        assertEquals(listOf("user.notes"), vm.uiState.value.freezerApps
+            .filter(vm.uiState.value.appListType::includes).map { it.packageName })
+        vm.updateListType(AppListType.ALL)
+        assertEquals(5, vm.uiState.value.freezerApps.filter(vm.uiState.value.appListType::includes).size)
+    }
+
+    @Test
+    fun `combined freezer sources are opt in and disabling clears hidden selection`() = runTest {
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        vm.updateListType(AppListType.ALL)
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        prefs.setCombinedAppListsEnabled(true)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        vm.updateListType(AppListType.ALL)
+        vm.selectAll(listOf("user", "system"))
+        prefs.setCombinedAppListsEnabled(false)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        assertTrue(vm.uiState.value.multiSelection.isEmpty())
+        vm.updateListType(AppListType.SYSTEM)
+        vm.selectAll(listOf("system"))
+        prefs.setCombinedAppListsEnabled(true)
+        runCurrent()
+        prefs.setCombinedAppListsEnabled(false)
+        runCurrent()
+        assertEquals(AppListType.SYSTEM, vm.uiState.value.appListType)
+        assertEquals(setOf("system"), vm.uiState.value.multiSelection)
+    }
+
+    @Test fun `verified freeze is tracked even when suspension ownership is unknown`() = runTest {
+        appRepository.apps.value = listOf(userApp("a"))
+        system.failWith("setAppSuspended:a:false", com.valhalla.thor.domain.model.SuspensionPolicyException(
+            com.valhalla.thor.domain.model.SuspensionFailureReason.OWNERSHIP_UNKNOWN))
+        val vm = viewModel()
+        runCurrent()
+        vm.toggleManaged("a", add = true)
+        runCurrent()
+        assertTrue(freezer.contains("a"))
+        assertEquals(listOf("setAppDisabled:a:true", "setAppSuspended:a:false"), system.calls)
+    }
+
+    @Test
     fun `a removal that thaws everything drops every row and counts what actually left`() = runTest {
         freezer.add("a")
         freezer.add("b")
@@ -184,8 +244,8 @@ class FreezerViewModelTest {
         assertEquals(
             "every package is asked to unsuspend and to re-enable — a freeze can be either",
             listOf(
-                "setAppSuspended:a:false", "setAppDisabled:a:false",
-                "setAppSuspended:b:false", "setAppDisabled:b:false"
+                "setAppDisabled:a:false", "setAppSuspended:a:false",
+                "setAppDisabled:b:false", "setAppSuspended:b:false"
             ),
             system.calls
         )
@@ -198,9 +258,9 @@ class FreezerViewModelTest {
         // app that is no longer in the freezer.
         assertEquals(
             listOf(
-                "setAppSuspended:a:false", "setAppDisabled:a:false",
+                "setAppDisabled:a:false", "setAppSuspended:a:false",
                 "shortcut.disable:a", "freezer.remove:a",
-                "setAppSuspended:b:false", "setAppDisabled:b:false",
+                "setAppDisabled:b:false", "setAppSuspended:b:false",
                 "shortcut.disable:b", "freezer.remove:b"
             ),
             trace
@@ -276,9 +336,9 @@ class FreezerViewModelTest {
         assertEquals(
             "c is still attempted after b failed — a per-package failure is not an abort",
             listOf(
-                "setAppSuspended:a:false", "setAppDisabled:a:false",
-                "setAppSuspended:b:false",
-                "setAppSuspended:c:false"
+                "setAppDisabled:a:false", "setAppSuspended:a:false",
+                "setAppDisabled:b:false", "setAppSuspended:b:false",
+                "setAppDisabled:c:false", "setAppSuspended:c:false"
             ),
             system.calls
         )
@@ -374,8 +434,8 @@ class FreezerViewModelTest {
         assertEquals(
             "c is never begun — the loop ends rather than moving on",
             listOf(
-                "setAppSuspended:a:false", "setAppDisabled:a:false",
-                "setAppSuspended:b:false", "setAppDisabled:b:false"
+                "setAppDisabled:a:false", "setAppSuspended:a:false",
+                "setAppDisabled:b:false", "setAppSuspended:b:false"
             ),
             system.calls
         )
@@ -410,7 +470,7 @@ class FreezerViewModelTest {
 
             assertEquals(
                 "the restore ran, and it is the launcher step after it that raised",
-                listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+                listOf("setAppDisabled:a:false", "setAppSuspended:a:false"),
                 system.calls
             )
             assertTrue("the row outlives the shortcut that would not be greyed", freezer.contains("a"))
@@ -494,7 +554,7 @@ class FreezerViewModelTest {
 
         assertEquals(
             "both halves, unconditionally — the same as the multi-select path",
-            listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+            listOf("setAppDisabled:a:false"),
             system.calls
         )
         assertTrue(freezer.contains("a"))
@@ -527,7 +587,7 @@ class FreezerViewModelTest {
 
             assertEquals(
                 "the restore still ran and succeeded — it is the delete after it that raised",
-                listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+                listOf("setAppDisabled:a:false", "setAppSuspended:a:false"),
                 system.calls
             )
             assertTrue("the throw left the row in place", freezer.contains("a"))
@@ -560,7 +620,7 @@ class FreezerViewModelTest {
         vm.toggleManaged("a", add = true)
         runCurrent()
 
-        assertEquals("the freeze itself went through", listOf("setAppDisabled:a:true"), system.calls)
+        assertEquals("the freeze itself went through", listOf("setAppDisabled:a:true", "setAppSuspended:a:false"), system.calls)
         assertFalse("it is the row that did not land", freezer.contains("a"))
         assertEquals(
             UiText.StringResource(R.string.error_format, "database is locked"),
@@ -596,7 +656,7 @@ class FreezerViewModelTest {
 
         assertEquals(
             "trusting the snapshot would remove the row without making a single privileged call",
-            listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+            listOf("setAppDisabled:a:false", "setAppSuspended:a:false"),
             system.calls
         )
         assertFalse(freezer.contains("a"))
@@ -637,7 +697,7 @@ class FreezerViewModelTest {
                 "the unsuspend is asked for rather than planned away by the stale flags",
                 listOf(
                     "setAppSuspended:a:true",
-                    "setAppSuspended:a:false", "setAppDisabled:a:false"
+                    "setAppDisabled:a:false", "setAppDisabled:a:false", "setAppSuspended:a:false"
                 ),
                 system.calls
             )
@@ -648,8 +708,8 @@ class FreezerViewModelTest {
             // already gone.
             assertEquals(
                 listOf(
-                    "setAppSuspended:a:true", "freezer.add:a",
-                    "setAppSuspended:a:false", "setAppDisabled:a:false",
+                    "setAppSuspended:a:true", "setAppDisabled:a:false", "freezer.add:a",
+                    "setAppDisabled:a:false", "setAppSuspended:a:false",
                     "shortcut.disable:a", "freezer.remove:a"
                 ),
                 trace

@@ -3,7 +3,7 @@
 
 package com.valhalla.thor.domain.model
 
-/** The filter category and chip remembered independently by each Apps tab. */
+/** The filter category and chip remembered independently for User, System and combined lists. */
 data class AppFilterPreferences(
     val filterType: FilterType = FilterType.Source,
     val selectedFilter: String = ALL_FILTER,

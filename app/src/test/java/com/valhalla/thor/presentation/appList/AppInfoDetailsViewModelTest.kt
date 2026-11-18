@@ -235,7 +235,7 @@ class AppInfoDetailsViewModelTest {
 
         assertEquals(
             "a removal has to unsuspend and re-enable, not just drop the row",
-            listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+            listOf("setAppDisabled:a:false", "setAppSuspended:a:false"),
             system.calls
         )
         assertFalse("the app is off the watchlist", freezer.contains("a"))
@@ -257,7 +257,7 @@ class AppInfoDetailsViewModelTest {
         runCurrent()
 
         assertEquals(
-            listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+            listOf("setAppDisabled:a:false", "setAppSuspended:a:false"),
             system.calls
         )
         assertFalse(freezer.contains("a"))

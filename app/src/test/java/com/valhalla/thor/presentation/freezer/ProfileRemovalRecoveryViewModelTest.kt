@@ -5,7 +5,9 @@ package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
+import com.valhalla.thor.domain.model.SuspensionChange
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -100,7 +102,7 @@ class ProfileRemovalRecoveryViewModelTest {
         vm.confirmProfileRemovalRecovery(unfreeze = true)
         runCurrent()
 
-        assertEquals(listOf("setAppSuspended:unknown:false"), system.calls)
+        assertEquals(listOf("setAppDisabled:unknown:false", "setAppSuspended:unknown:false"), system.calls)
         assertEquals("Stale", profiles.observeProfiles().first().single().name)
         assertEquals(listOf("unknown"), profiles.packagesOf(id))
         assertEquals(UiText.StringResource(R.string.profile_removal_restore_failed), vm.uiState.value.profileRemovalRecovery?.error)
@@ -134,10 +136,49 @@ class ProfileRemovalRecoveryViewModelTest {
         vm.confirmProfileRemovalRecovery(unfreeze = true)
         runCurrent()
 
-        assertEquals(listOf("setAppSuspended:app:false", "setAppDisabled:app:false", "write:After"), trace)
+        assertEquals(listOf("setAppDisabled:app:false", "setAppSuspended:app:false", "write:After"), trace)
         assertEquals(listOf("keep"), profiles.packagesOf(id))
         assertNull(vm.uiState.value.profileRemovalRecovery)
         assertTrue(freezer.getAllPackageNames().isEmpty())
+    }
+
+    @Test
+    fun `profile recovery accepts verified external-only pauses but keeps unknown or new Thor restrictions`() = runTest {
+        for (thorOwner in listOf(false, true, null)) {
+            val isolatedProfiles = FakeFreezeProfileRepository()
+            apps.apps.value = listOf(frozen("app").copy(isSuspended = true))
+            val id = isolatedProfiles.create("Paused", listOf("app"))
+            system.onCall = { call ->
+                if (call == "setAppDisabled:app:false") {
+                    apps.apps.value = listOf(AppInfo(packageName = "app", isSuspended = true))
+                }
+            }
+            val ownership = object : SystemRepository by system {
+                override suspend fun isAppSuspendedByThor(packageName: String) = thorOwner
+                override suspend fun setAppSuspended(
+                    packageName: String, isSuspended: Boolean,
+                    execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext,
+                ) = system.setAppSuspended(packageName, isSuspended, execution).map {
+                    SuspensionChange(setOf("com.google.android.apps.wellbeing"))
+                }
+            }
+            val vm = viewModel(profileRepository = isolatedProfiles, systemRepository = ownership)
+            val seen = events(vm)
+            vm.deleteProfile(id)
+            runCurrent()
+            vm.confirmProfileRemovalRecovery(unfreeze = true)
+            runCurrent()
+
+            if (thorOwner == false) {
+                assertTrue(isolatedProfiles.observeProfiles().first().isEmpty())
+                assertNull(vm.uiState.value.profileRemovalRecovery)
+                assertEquals(FreezerEvent.ShowToast(UiText.StringResource(R.string.sweep_external_pause_notice)), seen.last())
+            } else {
+                assertEquals(listOf("app"), isolatedProfiles.packagesOf(id))
+                assertNotNull(vm.uiState.value.profileRemovalRecovery)
+            }
+            assertTrue(apps.apps.value.single().isSuspended)
+        }
     }
 
     @Test
@@ -180,7 +221,7 @@ class ProfileRemovalRecoveryViewModelTest {
         vm.confirmProfileRemovalRecovery(unfreeze = true)
         runCurrent()
 
-        assertEquals(listOf("setAppSuspended:legacy:false", "setAppDisabled:legacy:false"), system.calls)
+        assertEquals(listOf("setAppDisabled:legacy:false", "setAppSuspended:legacy:false"), system.calls)
         assertTrue(profiles.observeProfiles().first().isEmpty())
     }
 
@@ -341,11 +382,12 @@ class ProfileRemovalRecoveryViewModelTest {
         profileRepository: FreezeProfileRepository = profiles,
         appRepository: AppRepository = apps,
         watchlist: FreezerRepository = freezer,
+        systemRepository: SystemRepository = system,
     ): FreezerViewModel {
         val prefs = FakePreferenceRepository()
         val controller = FakePrivilegeSweepController()
         val navigation = TaskNavigationTargets(ProvisionalTaskIdentityRegistry())
-        val manage = ManageAppUseCase(system, DefaultPackageOperationCoordinator())
+        val manage = ManageAppUseCase(systemRepository, DefaultPackageOperationCoordinator())
         return FreezerViewModel(
             freezerRepository = watchlist,
             freezeProfileRepository = profileRepository,

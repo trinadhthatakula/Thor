@@ -9,9 +9,12 @@ data class UserPreferences(
     val appSortOrder: SortOrder = SortOrder.ASCENDING,
     val userAppFilter: AppFilterPreferences = AppFilterPreferences(),
     val systemAppFilter: AppFilterPreferences = AppFilterPreferences(),
+    val combinedAppListsEnabled: Boolean = false,
+    val combinedAppFilter: AppFilterPreferences = AppFilterPreferences(),
 
     // Navigation — the tab Thor opens on at launch
     val defaultTab: DefaultTab = DefaultTab.HOME,
+    val navigationBar: NavigationBarPreferences = NavigationBarPreferences(),
 
     // Home Screen Config
     val showReinstallAllCard: Boolean = true,
@@ -30,6 +33,8 @@ data class UserPreferences(
 
     // Security
     val biometricLockEnabled: Boolean = false,
+    /** Opt-in coverage for external package installation and Bolt. */
+    val installerAppLockEnabled: Boolean = false,
 
     // Work Mode
     val preferredPrivilegeMode: PrivilegeMode? = null,
@@ -46,8 +51,8 @@ data class UserPreferences(
     // Freezer action mode: FREEZE = pm disable, SUSPEND = pm suspend
     val freezerMode: FreezerMode = FreezerMode.FREEZE,
 
-    // Add Freezer to launcher (home-screen shortcuts for frozen apps)
-    val addFreezerToLauncher: Boolean = false,
+    // Launcher shortcuts are available unless the user explicitly disables them.
+    val disableShortcuts: Boolean = false,
 
     // Skip the freeze confirmation for system apps at FreezeTier.NORMAL — the dialog someone
     // debloating a fresh device answers forty times in a row. Reaches nothing else: EXPERT still
@@ -137,9 +142,11 @@ data class UserPreferences(
      */
     val settingsLost: Boolean = false
 ) {
+    /** Returns the selected source's independent profile with unsupported categories reset. */
     fun appFilterFor(type: AppListType): AppFilterPreferences = when (type) {
         AppListType.USER -> userAppFilter
         AppListType.SYSTEM -> systemAppFilter
+        AppListType.ALL -> combinedAppFilter
     }.normalizedFor(type)
 
     fun multiAppActionsOrder(layout: MultiAppActionLayout): List<MultiAppActionId> = when (layout) {

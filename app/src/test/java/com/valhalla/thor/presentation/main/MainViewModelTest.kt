@@ -18,6 +18,8 @@ import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.SuspensionChange
+import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.TaskQueueKind
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.UserPreferences
@@ -724,6 +726,39 @@ class MainViewModelTest {
             ),
             effects
         )
+    }
+
+    @Test
+    fun `suspend keeps its success message while restoration reports remaining pauses`() = runTest {
+        val app = userApp("com.instagram", appName = "Instagram")
+        val wellbeing = "com.google.android.apps.wellbeing"
+        for ((change, remainingFeedback) in listOf(
+            SuspensionChange(setOf(wellbeing)) to UiText.StringResource(R.string.thaw_external_pause, "Instagram", wellbeing),
+            SuspensionChange(ownershipUnknown = true) to UiText.StringResource(R.string.suspension_ownership_unknown),
+            SuspensionChange() to null,
+        )) {
+            val repository = object : SystemRepository by system {
+                override suspend fun setAppSuspended(
+                    packageName: String, isSuspended: Boolean, execution: PrivilegeExecutionContext,
+                ) = system.setAppSuspended(packageName, isSuspended, execution).map { change }
+            }
+            val cases = listOf(
+                AppClickAction.Suspend(app) to UiText.StringResource(R.string.suspended_success, "Instagram"),
+                AppClickAction.UnFreeze(app) to (remainingFeedback ?: UiText.StringResource(R.string.unfrozen_success, "Instagram")),
+                AppClickAction.UnSuspend(app) to (remainingFeedback ?: UiText.StringResource(R.string.unsuspended_success, "Instagram")),
+            )
+            for ((action, expected) in cases) {
+                val vm = viewModel(
+                    systemRepository = repository,
+                    preferenceRepository = FakePreferenceRepository(UserPreferences(hasShownSupportDeveloperPrompt = true)),
+                )
+                val effects = effectsOf(vm)
+                vm.onAppAction(action)
+                advanceUntilIdle()
+
+                assertEquals(listOf(MainSideEffect.Message(expected, isSuccess = true)), effects)
+            }
+        }
     }
 
     @Test

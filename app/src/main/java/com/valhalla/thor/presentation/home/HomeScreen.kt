@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.home
 
+import com.valhalla.thor.presentation.navigation.LocalFloatingNavigationClearance
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -45,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -69,8 +72,7 @@ import com.valhalla.thor.presentation.home.components.RootManagerPickerSheet
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import com.valhalla.thor.presentation.home.components.SupportCommunitySection
 import com.valhalla.thor.presentation.home.components.homeActionRows
-import com.valhalla.thor.presentation.installer.InstallerViewModel
-import com.valhalla.thor.presentation.installer.PortableInstaller
+import com.valhalla.thor.presentation.installer.createPortableInstallerIntent
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.theme.LocalDarkTheme
 import com.valhalla.thor.presentation.theme.greenDark
@@ -78,6 +80,7 @@ import com.valhalla.thor.presentation.theme.greenLight
 import com.valhalla.thor.presentation.widgets.AppIcon
 import org.koin.androidx.compose.koinViewModel
 
+/** Renders source-specific dashboard data and routes tile actions to their owning workflows. */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun HomeScreen(
@@ -102,21 +105,19 @@ fun HomeScreen(
     onNavigateToExtensionManager: () -> Unit,
     onNavigateToBackupRestoreHub: () -> Unit,
     viewModel: HomeViewModel = koinViewModel(),
-    installerViewModel: InstallerViewModel = koinViewModel()
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showPrivilegeSheet by remember { mutableStateOf(false) }
     var showRootManagerPicker by remember { mutableStateOf(false) }
 
-    var showInstallerSheet by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            installerViewModel.parsePackage(it)
-            showInstallerSheet = true
+            context.startActivity(createPortableInstallerIntent(context, it))
         }
     }
 
@@ -142,10 +143,8 @@ fun HomeScreen(
         showExtensions = state.showExtensionsTile,
     ).isNotEmpty()
 
-    // The bottom inset (nav-bar height + system navigation-bar insets) is already applied by
-    // MainScreen, which hosts this screen inside Scaffold's Box(Modifier.padding(innerPadding)).
-    // Adding another 80.dp + navigationBars here double-counted it and left a large empty gap
-    // at the bottom of the scroll content, so this screen owns no bottom inset of its own.
+    // Docked navigation is outside this viewport. Floating navigation overlays it; only the
+    // scroll-content tail gets clearance so the final card can scroll above the bar.
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -157,6 +156,7 @@ fun HomeScreen(
                 .then(if (isExpanded) Modifier.widthIn(max = 1200.dp) else Modifier)
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
+                .padding(bottom = LocalFloatingNavigationClearance.current)
         ) {
         // 1. Header (full width always)
         DashboardHeader(
@@ -560,13 +560,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    if (showInstallerSheet) {
-        PortableInstaller(
-            onDismiss = { showInstallerSheet = false },
-            viewModel = installerViewModel
-        )
     }
 
     if (showSupportSheet) {

@@ -74,6 +74,8 @@ class AppFreezeStateReader(
         FreezeCandidate(
             state = if (isFrozen(enabled, suspended)) FreezeState.FROZEN else FreezeState.ACTIVE,
             blockedFromFreeze = tier == FreezeTier.BLOCKED,
+            isDisabled = !enabled,
+            isSuspended = suspended,
         )
     } catch (_: PackageManager.NameNotFoundException) {
         // Unnamed: "no such package for this user" is the expected answer here, not an error.

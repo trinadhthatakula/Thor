@@ -239,7 +239,7 @@ class SettingsExpandedSwitchRowTest {
             ExpandedRow(R.drawable.frozen, R.string.auto_freeze, R.string.auto_freeze_desc),
             ExpandedRow(R.drawable.frozen, R.string.suspend_instead_of_freeze, R.string.suspend_instead_of_freeze_desc),
             ExpandedRow(R.drawable.danger, R.string.skip_routine_freeze_confirmation, R.string.skip_routine_freeze_confirmation_desc),
-            ExpandedRow(R.drawable.frozen, R.string.add_freezer_to_launcher, R.string.add_freezer_to_launcher_desc),
+            ExpandedRow(R.drawable.frozen, R.string.disable_shortcuts, R.string.disable_shortcuts_desc),
             ExpandedRow(R.drawable.round_key, R.string.biometric_lock, R.string.biometric_lock_desc),
         )
     }

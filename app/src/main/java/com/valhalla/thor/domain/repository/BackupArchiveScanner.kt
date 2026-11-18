@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.domain.repository
 
-import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 
 /** Classification of backup files discovered in storage. */
@@ -28,8 +27,28 @@ data class BackupArchiveItem(
     val extension: String,
 )
 
+enum class BackupArchiveSourceKind { DOWNLOADS, CUSTOM_FOLDER }
+
+/** A failed location can coexist with successfully discovered archives. */
+data class UnavailableArchiveSource(
+    val kind: BackupArchiveSourceKind,
+    val uriString: String? = null,
+)
+
+data class BackupArchiveScan(
+    val archives: List<BackupArchiveItem>,
+    val unavailableSources: List<UnavailableArchiveSource> = emptyList(),
+)
+
+enum class ArchiveDeleteFailure { ACCESS_DENIED, READ_ONLY, NOT_FOUND, UNAVAILABLE }
+
+sealed interface ArchiveDeleteResult {
+    data object Deleted : ArchiveDeleteResult
+    data class Failed(val reason: ArchiveDeleteFailure) : ArchiveDeleteResult
+}
+
 /** Scanner discovering archives stored in Downloads/Thor or custom SAF folders. */
 interface BackupArchiveScanner {
-    fun scanBackups(): Flow<List<BackupArchiveItem>>
-    suspend fun deleteArchive(item: BackupArchiveItem): Boolean
+    fun scanBackups(): Flow<BackupArchiveScan>
+    suspend fun deleteArchive(item: BackupArchiveItem): ArchiveDeleteResult
 }

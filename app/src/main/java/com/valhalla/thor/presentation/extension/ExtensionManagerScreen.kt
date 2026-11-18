@@ -4,14 +4,19 @@
 package com.valhalla.thor.presentation.extension
 
 import android.content.Intent
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,10 +30,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,6 +85,7 @@ fun ExtensionManagerScreen(
     onBack: () -> Unit,
     onBrowse: () -> Unit,
     onSettingsEditor: () -> Unit,
+    onKernelFlasher: () -> Unit,
     viewModel: ExtensionManagerViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -157,49 +165,130 @@ fun ExtensionManagerScreen(
         val settingsMode = com.valhalla.thor.domain.model.settingsEditorMode(privilege, prefs.preferredPrivilegeMode)
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
+            contentPadding = PaddingValues(vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item(key = "sett-edit") {
-                androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.sett_edit), style = MaterialTheme.typography.titleLarge)
-                        Text(stringResource(R.string.sett_builtin_desc))
-                        Text(stringResource(if (settingsMode == null) R.string.sett_unavailable else R.string.sett_builtin))
-                        Button(onClick = onSettingsEditor, enabled = settingsMode != null && consentAccepted == true) {
-                            Text(stringResource(R.string.sett_open))
-                        }
-                    }
+            item(key = "built-in-heading") {
+                Text(
+                    stringResource(R.string.extension_builtin_heading),
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            item(key = "built-in-extensions") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp)
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    BuiltInExtensionCard(
+                        title = stringResource(R.string.sett_edit),
+                        description = stringResource(R.string.sett_builtin_desc),
+                        icon = R.drawable.settings,
+                        status = stringResource(if (settingsMode == null) R.string.sett_unavailable else R.string.sett_builtin),
+                        actionLabel = stringResource(R.string.sett_open),
+                        enabled = settingsMode != null && consentAccepted == true,
+                        onClick = onSettingsEditor,
+                    )
+                    BuiltInExtensionCard(
+                        title = stringResource(R.string.kernel_flasher),
+                        description = stringResource(R.string.kernel_description),
+                        icon = R.drawable.shield,
+                        status = if (privilege.rootAvailability.canAdmitRoot) null else stringResource(R.string.kernel_root_required),
+                        actionLabel = stringResource(R.string.kernel_open),
+                        enabled = consentAccepted == true,
+                        onClick = onKernelFlasher,
+                    )
                 }
             }
-            item {
-                Text(stringResource(R.string.extensions), style = MaterialTheme.typography.headlineLarge)
-                Text(stringResource(R.string.manage_extensions_desc))
-                Button(onClick = onBrowse) { Text(stringResource(R.string.extension_browse_store)) }
+            item(key = "installed-heading") {
+                Column(
+                    Modifier.padding(horizontal = 24.dp).padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(stringResource(R.string.extension_installed_heading), style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.manage_extensions_desc), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = onBrowse) { Text(stringResource(R.string.extension_browse_store)) }
+                }
             }
-            if (state.isLoading) item { androidx.compose.material3.CircularProgressIndicator() }
+            if (state.isLoading) item {
+                Box(Modifier.padding(horizontal = 24.dp)) { androidx.compose.material3.CircularProgressIndicator() }
+            }
+            if (!state.isLoading && state.error == null && state.extensions.isEmpty()) item(key = "installed-empty") {
+                Text(
+                    stringResource(R.string.no_extensions_installed),
+                    Modifier.padding(horizontal = 24.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             state.error?.let { error ->
                 item(key = "reload-error") {
-                    Text(error, color = MaterialTheme.colorScheme.error)
-                    Button(onClick = viewModel::loadExtensions) { Text(stringResource(R.string.extension_retry)) }
+                    Column(Modifier.padding(horizontal = 24.dp)) {
+                        Text(error, color = MaterialTheme.colorScheme.error)
+                        Button(onClick = viewModel::loadExtensions) { Text(stringResource(R.string.extension_retry)) }
+                    }
                 }
             }
             items(state.extensions, key = { it.packageName }) { item ->
-                ExtensionCard(
-                    item = item, prefs = prefs,
-                    onConfigure = {
-                        extensionManager.getConfigLaunchIntent(item.packageName)?.let {
-                            it.putExtra(ExtensionManager.EXTRA_THEME_MODE, prefs.themeMode.name)
-                            it.putExtra(ExtensionManager.EXTRA_DYNAMIC_COLOR, prefs.useDynamicColor)
-                            it.putExtra(ExtensionManager.EXTRA_AMOLED, prefs.useAmoled)
-                            runCatching { context.startActivity(it) }
+                Box(Modifier.padding(horizontal = 24.dp)) {
+                    ExtensionCard(
+                        item = item, prefs = prefs,
+                        onConfigure = {
+                            extensionManager.getConfigLaunchIntent(item.packageName)?.let {
+                                it.putExtra(ExtensionManager.EXTRA_THEME_MODE, prefs.themeMode.name)
+                                it.putExtra(ExtensionManager.EXTRA_DYNAMIC_COLOR, prefs.useDynamicColor)
+                                it.putExtra(ExtensionManager.EXTRA_AMOLED, prefs.useAmoled)
+                                runCatching { context.startActivity(it) }
+                            }
+                        },
+                        onUninstall = {
+                            val intent = Intent(Intent.ACTION_DELETE).apply { data = "package:${item.packageName}".toUri() }
+                            runCatching { context.startActivity(intent) }
                         }
-                    },
-                    onUninstall = {
-                        val intent = Intent(Intent.ACTION_DELETE).apply { data = "package:${item.packageName}".toUri() }
-                        runCatching { context.startActivity(intent) }
-                    }
-                )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BuiltInExtensionCard(
+    title: String,
+    description: String,
+    @DrawableRes icon: Int,
+    status: String?,
+    actionLabel: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.width(248.dp).fillMaxHeight(),
+        shape = RoundedCornerShape(28.dp),
+    ) {
+        Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                Modifier.size(48.dp).background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(26.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            }
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(description, style = MaterialTheme.typography.bodyMedium)
+            status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Spacer(Modifier.weight(1f))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(actionLabel, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(20.dp))
             }
         }
     }

@@ -128,6 +128,7 @@ class DefaultPrivilegeSweepController internal constructor(
             // Only commands executed for this task can establish root fallback use.
             rootLaneDegraded = targetSnapshots.any { it.rootLaneDegraded },
             profileIds = profileIdsFromSourceAssociations(sourceAssociations),
+            externalSuspensionRemains = targetSnapshots.any { it.resultCode?.value == "EXTERNAL_SUSPENSION_REMAINS" },
         )
 
     private fun PrivilegeSweepRequestState.toPhase(): PrivilegeSweepPhase = when (this) {

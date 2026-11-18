@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">Suspensión omitida: Thor no puede verificar una suspensión independiente. Usa el modo Congelar; se conservaron las restricciones existentes.</string>
+    <string name="suspension_ownership_unknown">Thor no pudo verificar quién controla la suspensión. Se conservó la pausa existente; vuelve a intentarlo tras comprobar la restricción.</string>
+    <string name="suspension_change_unverified">Thor no pudo verificar el cambio de suspensión. Actualiza e inténtalo de nuevo.</string>
+    <string name="suspend_wrong_privilege">La suspensión de Thor pertenece a otro modo de privilegios. Vuelve a ese modo para quitarla.</string>
+    <string name="thaw_external_pause">%1$s: restricción de Thor eliminada; sigue pausada por %2$s.</string>
+    <string name="thaw_external_pause_generic">%1$s: restricción de Thor eliminada; sigue pausada por otra aplicación.</string>
+    <string name="sweep_external_pause_notice">Algunas aplicaciones restauradas siguen pausadas por otras aplicaciones.</string>
+</resources>

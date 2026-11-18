@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.launcher
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -29,6 +30,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -36,10 +38,12 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+import java.util.concurrent.atomic.AtomicLong
 
 internal fun terminalSweepRequestIds(statuses: List<PrivilegeSweepStatus>): Set<java.util.UUID> =
     statuses.asSequence()
@@ -61,12 +65,17 @@ internal fun terminalSweepRequestIds(statuses: List<PrivilegeSweepStatus>): Set<
 class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
+    private val preferenceRepository: PreferenceRepository,
     private val sweepController: PrivilegeSweepController,
     private val stateReader: AppFreezeStateReader,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppShortcutController {
     // App-scoped: bulk work must survive the (finishing) trampoline activity.
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val shortcutState = context.getSharedPreferences("freezer_shortcut_state", Context.MODE_PRIVATE)
+    private val shortcutSyncLock = Any()
+    @Volatile private var shortcutsEnabled = true
+    private val shortcutSyncVersion = AtomicLong()
 
     // Solid launcher-tile backgrounds for the bulk action shortcuts (shared with the in-app preview).
     private val freezeShortcutBg = FreezerShortcutContract.FREEZE_TILE_COLOR
@@ -74,6 +83,7 @@ class FreezerShortcutManager(
 
     private companion object {
         const val LAUNCH_ACTIVITY = "com.valhalla.thor.presentation.launcher.FreezerLaunchActivity"
+        const val PINS_DISABLED_BY_SETTING = "pins_disabled_by_setting"
     }
 
     init {
@@ -137,11 +147,15 @@ class FreezerShortcutManager(
     /** Suspending pin so bulk callers can pin sequentially instead of spawning N concurrent bitmap
      *  decodes + binder pin requests (which risks OOM / overwhelming the shortcut service). */
     override suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
+        if (!shortcutsEnabled) return
         val shortcut = buildAppShortcut(packageName, label)
-        // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
-        // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
-        ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
-        ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
+        synchronized(shortcutSyncLock) {
+            if (!shortcutsEnabled) return
+            // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
+            // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
+            ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
+            ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
+        }
     }
 
     /** Update an already-pinned per-app shortcut so its icon reflects the app's current state.
@@ -154,40 +168,113 @@ class FreezerShortcutManager(
 
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut. */
     override fun pinBulkShortcut(action: String) {
-        val shortcut = bulkShortcut(action)
-        val label = shortcut.shortLabel.toString()
-        ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
+        synchronized(shortcutSyncLock) {
+            if (!shortcutsEnabled) return
+            val shortcut = bulkShortcut(action)
+            val label = shortcut.shortLabel.toString()
+            ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
+        }
     }
 
-    /** Publish (or remove) the Freeze-all + Unfreeze-all long-press dynamic shortcuts. */
-    override fun syncDynamicShortcuts(enabled: Boolean) {
+    /** Sync the dynamic pair and any already-pinned Freezer shortcuts with the global setting. */
+    override fun syncShortcuts(enabled: Boolean) {
+        shortcutsEnabled = enabled
+        shortcutSyncVersion.incrementAndGet()
         // Binder IPC — called from Main (cold-start + Settings); keep it off the caller's thread.
         //
         // Guarded for the same reason as the two above, and this one is the worst of the three to
         // leave bare: a cold-start caller means a throw here is a crash *on launch*, before the
         // user has touched anything.
-        launchSafely(if (enabled) "publishing the bulk shortcuts" else "removing the bulk shortcuts") {
-            if (enabled) {
-                ShortcutManagerCompat.setDynamicShortcuts(
-                    context,
-                    listOf(
-                        bulkShortcut(FreezerShortcutContract.ACTION_FREEZE_ALL),
-                        bulkShortcut(FreezerShortcutContract.ACTION_UNFREEZE_ALL),
+        launchSafely(if (enabled) "enabling shortcuts" else "disabling shortcuts") {
+            synchronized(shortcutSyncLock) {
+                // Re-read the latest request inside the lock: rapid toggles may queue jobs in a
+                // different order than they were called, but the final state must match the setting.
+                if (shortcutsEnabled) {
+                    restorePinnedShortcuts()
+                    ShortcutManagerCompat.setDynamicShortcuts(
+                        context,
+                        listOf(
+                            bulkShortcut(FreezerShortcutContract.ACTION_FREEZE_ALL),
+                            bulkShortcut(FreezerShortcutContract.ACTION_UNFREEZE_ALL),
+                        )
                     )
-                )
-            } else {
-                ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+                } else {
+                    ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+                    disablePinnedShortcuts()
+                }
             }
         }
     }
 
-    /** Grey out a per-app shortcut (the ceiling — pinned icons can't be silently removed). */
-    override fun disableAppShortcut(packageName: String) {
+    /** A launcher may finish a pending pin after the disable pass has already scanned pinned ids. */
+    suspend fun reconcilePinnedShortcutAfterPin(): Boolean {
+        val versionAtRead = shortcutSyncVersion.get()
+        val prefs = preferenceRepository.userPreferences.first()
+        synchronized(shortcutSyncLock) {
+            // A toggle may restore pins while this preference read waits for the lock. If a sync
+            // was requested meanwhile, its shared state supersedes that earlier snapshot.
+            val disabled = if (shortcutSyncVersion.get() != versionAtRead) {
+                !shortcutsEnabled
+            } else {
+                prefs.disableShortcuts || prefs.settingsLost
+            }
+            if (!disabled) return true
+            // Use the same save-before-disable path as syncShortcuts(false), so these pins can be
+            // restored when the user enables shortcuts again.
+            disablePinnedShortcuts()
+            return false
+        }
+    }
+
+    // KTX edit(commit = true) discards the success result; we must not disable a pin until its
+    // recovery id is durably saved, or a failed disk write can leave it disabled after restart.
+    @SuppressLint("UseKtx")
+    private fun disablePinnedShortcuts() {
+        val newlyDisabled = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+            .filter { it.isEnabled && FreezerShortcutContract.isFreezerShortcutId(it.id) }
+            .map { it.id }
+        if (newlyDisabled.isEmpty()) return
+        // Save only shortcuts that were enabled before this setting changed. Unrelated pins and
+        // shortcuts already retired because their app left Freezer must stay as they were.
+        val saved = shortcutState.getStringSet(PINS_DISABLED_BY_SETTING, emptySet()).orEmpty().toSet()
+        if (!shortcutState.edit().putStringSet(PINS_DISABLED_BY_SETTING, saved + newlyDisabled).commit()) {
+            Logger.w("FreezerShortcut", "Could not save pinned shortcut state; leaving pins enabled")
+            return
+        }
         ShortcutManagerCompat.disableShortcuts(
             context,
-            listOf(FreezerShortcutContract.appShortcutId(packageName)),
-            context.getString(R.string.shortcut_no_longer_frozen)
+            newlyDisabled,
+            context.getString(R.string.shortcuts_disabled_message),
         )
+    }
+
+    @SuppressLint("UseKtx")
+    private fun restorePinnedShortcuts() {
+        val saved = shortcutState.getStringSet(PINS_DISABLED_BY_SETTING, emptySet()).orEmpty().toSet()
+        if (saved.isEmpty()) return
+        val toRestore = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+            .filter { it.id in saved }
+        if (toRestore.isNotEmpty()) ShortcutManagerCompat.enableShortcuts(context, toRestore)
+        if (!shortcutState.edit().remove(PINS_DISABLED_BY_SETTING).commit()) {
+            Logger.w("FreezerShortcut", "Could not clear restored pinned shortcut state")
+        }
+    }
+
+    /** Grey out a per-app shortcut (the ceiling — pinned icons can't be silently removed). */
+    @SuppressLint("UseKtx")
+    override fun disableAppShortcut(packageName: String) {
+        synchronized(shortcutSyncLock) {
+            val id = FreezerShortcutContract.appShortcutId(packageName)
+            val saved = shortcutState.getStringSet(PINS_DISABLED_BY_SETTING, emptySet()).orEmpty().toSet()
+            if (id in saved && !shortcutState.edit().putStringSet(PINS_DISABLED_BY_SETTING, saved - id).commit()) {
+                Logger.w("FreezerShortcut", "Could not retire pinned shortcut state for $packageName")
+            }
+            ShortcutManagerCompat.disableShortcuts(
+                context,
+                listOf(id),
+                context.getString(R.string.shortcut_no_longer_frozen)
+            )
+        }
     }
 
     /**

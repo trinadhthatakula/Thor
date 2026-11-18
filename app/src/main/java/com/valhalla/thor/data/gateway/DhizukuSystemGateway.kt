@@ -3,6 +3,9 @@
 
 package com.valhalla.thor.data.gateway
 
+import com.valhalla.thor.domain.model.SuspensionFailureReason
+import com.valhalla.thor.domain.model.SuspensionPolicyException
+import com.valhalla.thor.domain.model.SuspensionChange
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -319,9 +322,18 @@ class DhizukuSystemGateway internal constructor(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext,
-    ): Result<Unit> {
-        return if (reflector.setAppSuspended(packageName, isSuspended)) Result.success(Unit)
-        else Result.failure(Exception("Dhizuku: Set suspended state failed."))
+    ): Result<SuspensionChange> = withContext(ioDispatcher) {
+        // DPM's aggregate boolean cannot identify a Thor entry under the shared owner app. Never
+        // overwrite or remove another Dhizuku client's suspension, or pretend the flag proves ours.
+        val app = reflector.getApplicationInfoOrNull(packageName)
+        when {
+            isSuspended -> Result.failure(SuspensionPolicyException(
+                SuspensionFailureReason.CANNOT_KEEP_INDEPENDENT))
+            app == null -> Result.failure(SuspensionPolicyException(
+                SuspensionFailureReason.OWNERSHIP_UNKNOWN))
+            else -> Result.success(SuspensionChange(
+                ownershipUnknown = (app.flags and ApplicationInfo.FLAG_SUSPENDED) != 0))
+        }
     }
 
     override suspend fun setAppRestricted(

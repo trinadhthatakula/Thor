@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -39,7 +40,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import com.valhalla.thor.presentation.navigation.ThorNavigationScaffold
+import com.valhalla.thor.presentation.navigation.DockedNavigationBar
+import com.valhalla.thor.domain.model.NavigationPlacement
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -68,6 +71,9 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.window.core.layout.WindowSizeClass
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
@@ -120,6 +126,7 @@ import com.valhalla.thor.presentation.queue.TaskDetailScreen
 import com.valhalla.asgard.navigation.AsgardNavItem
 import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
+import com.valhalla.thor.presentation.navigation.navigationConfiguration
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsCategory
 import com.valhalla.thor.presentation.settings.SettingsCategoryScreen
@@ -134,6 +141,7 @@ import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.customization.AppInfoActionsCustomizationScreen
 import com.valhalla.thor.presentation.settings.customization.MultiAppActionsCustomizationScreen
+import com.valhalla.thor.presentation.settings.customization.NavigationCustomizationScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
@@ -624,13 +632,39 @@ fun MainScreen(
                     items = navItems,
                     selectedIndex = selectedNavIndex,
                     onSelect = { handleDestinationSelected(AppDestinations.entries[it]) },
-                    showLabel = showNavRailLabel
+                    configuration = navigationConfiguration(state.prefs.navigationBar, rail = true, railLabelsFit = showNavRailLabel),
+                    modifier = Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()),
                 )
             }
         }
 
-        Scaffold(
+        val floatingNavigation = !isWideScreen &&
+            state.prefs.navigationBar.placement == NavigationPlacement.FLOATING
+        ThorNavigationScaffold(
             modifier = Modifier.weight(1f),
+            floatingNavigation = floatingNavigation,
+            navigationBar = {
+                if (!isWideScreen) {
+                    AnimatedVisibility(
+                        visible = showBottomBar,
+                        enter = slideInVertically(initialOffsetY = { it }),
+                        exit = slideOutVertically(targetOffsetY = { it })
+                    ) {
+                        val bar: @Composable () -> Unit = {
+                            AsgardNavigationBar(
+                                items = navItems,
+                                selectedIndex = selectedNavIndex,
+                                onSelect = { handleDestinationSelected(AppDestinations.entries[it]) },
+                                configuration = navigationConfiguration(
+                                    state.prefs.navigationBar,
+                                    scaffoldFloating = floatingNavigation,
+                                ),
+                            )
+                        }
+                        if (floatingNavigation) bar() else DockedNavigationBar(content = bar)
+                    }
+                }
+            },
             snackbarHost = {
                 SnackbarHost(snackbarHostState) { data ->
                     Snackbar(
@@ -644,10 +678,9 @@ fun MainScreen(
             },
             bottomBar = {
                 Column {
-                    // Above the navigation bar and outside its AnimatedVisibility: an export
-                    // outlives the screen that started it, so it must stay visible on a screen
-                    // that has hidden the bar, and on a wide layout that never had one. It is
-                    // also the only cancel affordance there is.
+                    // Export progress keeps its own bottom slot independently of navigation.
+                    // It outlives the screen that started it, so it must stay visible when the
+                    // navigation bar is hidden and on wide layouts. It is the cancel affordance.
                     AnimatedVisibility(
                         visible = state.exportProgress != null,
                         enter = slideInVertically(initialOffsetY = { it }),
@@ -661,19 +694,6 @@ fun MainScreen(
                             ExportProgressBar(
                                 state = progress,
                                 onCancel = { mainViewModel.cancelExport() }
-                            )
-                        }
-                    }
-                    if (!isWideScreen) {
-                        AnimatedVisibility(
-                            visible = showBottomBar,
-                            enter = slideInVertically(initialOffsetY = { it }),
-                            exit = slideOutVertically(targetOffsetY = { it })
-                        ) {
-                            AsgardNavigationBar(
-                                items = navItems,
-                                selectedIndex = selectedNavIndex,
-                                onSelect = { handleDestinationSelected(AppDestinations.entries[it]) }
                             )
                         }
                     }
@@ -978,7 +998,10 @@ fun MainScreen(
                                 },
                                 onNavigateToCustomizeFreezerMultiActions = {
                                     settingsBackStack.add(ThorRoute.FreezerMultiActionsCustomization)
-                                }
+                                },
+                                onNavigateToCustomizeNavigation = {
+                                    settingsBackStack.add(ThorRoute.NavigationCustomization)
+                                },
                             )
                         }
                     }
@@ -1010,7 +1033,8 @@ fun MainScreen(
                             onBrowse = {
                                 currentBackStack.add(ThorRoute.ExtensionBrowse)
                             },
-                            onSettingsEditor = { currentBackStack.add(ThorRoute.SettingsEditor) }
+                            onSettingsEditor = { currentBackStack.add(ThorRoute.SettingsEditor) },
+                            onKernelFlasher = { currentBackStack.add(ThorRoute.KernelFlasher) },
                         )
                     }
 
@@ -1018,6 +1042,18 @@ fun MainScreen(
                         com.valhalla.thor.presentation.settingseditor.SettingsEditorScreen(onBack = {
                             if (currentBackStack.size > 1) currentBackStack.removeLastOrNull()
                         })
+                    }
+
+                    entry<ThorRoute.KernelFlasher>(metadata = ListDetailSceneStrategy.detailPane()) {
+                        com.valhalla.thor.presentation.kernel.KernelFlasherScreen(
+                            onBack = {
+                                if (currentBackStack.size > 1) currentBackStack.removeLastOrNull()
+                            },
+                            // MainScreen already applies this padding to NavDisplay. Let the
+                            // flasher handle only the system insets that remain (including its
+                            // navigation bar while the main bottom bar is hidden).
+                            modifier = Modifier.consumeWindowInsets(innerPadding),
+                        )
                     }
 
                     entry<ThorRoute.ExtensionBrowse>(
@@ -1029,6 +1065,20 @@ fun MainScreen(
                                     currentBackStack.removeLastOrNull()
                                 }
                             }
+                        )
+                    }
+
+                    // Use the full window for the editor rather than retaining the settings index.
+                    entry<ThorRoute.NavigationCustomization> {
+                        val customizationState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+                        NavigationCustomizationScreen(
+                            preferences = customizationState.prefs.navigationBar,
+                            onBack = {
+                                if (currentBackStack.size > 1) {
+                                    currentBackStack.removeLastOrNull()
+                                }
+                            },
+                            onApply = settingsViewModel::applyNavigationBarPreferences,
                         )
                     }
 
@@ -1194,6 +1244,7 @@ fun MainScreen(
                 Box(
                     modifier = Modifier
                         .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding)
                         .fillMaxSize()
                 ) {
                     NavDisplay(

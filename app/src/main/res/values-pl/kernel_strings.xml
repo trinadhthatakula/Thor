@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kernel_flasher">Instalator jąder</string>
+    <string name="kernel_description">Zainstaluj jądro z pliku ZIP AnyKernel3 z uprawnieniami root.</string>
+    <string name="kernel_requirements">Wymaga dostępu root i działającego BusyBox z Magisk, KernelSU lub APatch. Inne formaty ZIP i obrazy rozruchowe nie są obsługiwane.</string>
+    <string name="kernel_warning">Instaluj wyłącznie pakiet z zaufanego źródła, przygotowany dokładnie dla Twojego urządzenia i ROM-u. Jego skrypty i narzędzia natywne działają z uprawnieniami root i mogą modyfikować partycje rozruchowe, dane oraz zabezpieczenia urządzenia. Niezgodny pakiet lub przerwana instalacja mogą uniemożliwić uruchomienie Androida. Zachowaj sprawdzony obraz rozruchowy oraz możliwość przywrócenia go poza aplikacją Thor.</string>
+    <string name="kernel_choose">Wybierz plik ZIP AnyKernel3</string>
+    <string name="kernel_flash">Zainstaluj jądro</string>
+    <string name="kernel_confirm_title">Zainstalować to jądro?</string>
+    <string name="kernel_acknowledge">Ufam temu pakietowi, jego zgodność z moim urządzeniem została sprawdzona i mam sposób na odzyskanie systemu.</string>
+    <string name="kernel_confirmation">Po rozpoczęciu nie można anulować instalacji. Sprawdzanie pliku ZIP weryfikuje format, a nie zgodność czy bezpieczeństwo. Thor nie uruchomi automatycznie urządzenia ponownie, nie ponowi instalacji ani nie przywróci poprzedniego jądra.</string>
+    <string name="kernel_root_required">Przyznaj aplikacji Thor dostęp root, aby wybrać i zainstalować jądro.</string>
+    <string name="kernel_preparing">Sprawdzanie pliku ZIP…</string>
+    <string name="kernel_starting">Przygotowywanie instalatora z uprawnieniami root…</string>
+    <string name="kernel_running">Instalowanie jądra. Nie wyłączaj urządzenia ani nie wymuszaj zatrzymania aplikacji Thor.</string>
+    <string name="kernel_success">Instalator zakończył działanie pomyślnie. Nie zweryfikowano zgodności przy rozruchu. Sprawdź dziennik przed ponownym uruchomieniem.</string>
+    <string name="kernel_failed">Operacja nie powiodła się. Sprawdź szczegóły poniżej.</string>
+    <string name="kernel_unknown">Wynik działania instalatora jest nieznany. Instalator może nadal działać albo urządzenie mogło już zostać częściowo zmodyfikowane. Nie rozpoczynaj kolejnej instalacji. Sprawdź dziennik i procedurę odzyskiwania systemu.</string>
+    <string name="kernel_boot_lock">Kolejna instalacja jest zablokowana do czasu wykrycia nowego rozruchu urządzenia. Ponowne uruchomienie po nieudanej instalacji może wymagać odzyskiwania za pomocą narzędzi zewnętrznych.</string>
+    <string name="kernel_save_log">Zapisz dziennik</string>
+    <string name="kernel_reboot">Uruchom urządzenie ponownie</string>
+    <string name="kernel_reboot_confirm">Uruchomić urządzenie ponownie teraz?</string>
+    <string name="kernel_service_blocked">Włącz kanał powiadomień instalatora jąder i spróbuj ponownie przy otwartej aplikacji Thor.</string>
+    <string name="kernel_hash">SHA-256: %1$s</string>
+    <string name="kernel_open">Otwórz instalator</string>
+    <string name="kernel_package_heading">1. Pakiet jądra</string>
+    <string name="kernel_slot_heading">2. Slot docelowy</string>
+    <string name="kernel_change_package">Zmień ZIP</string>
+    <string name="kernel_package_details">Szczegóły pakietu</string>
+    <string name="kernel_slot_default">Domyślny wybór pakietu</string>
+    <string name="kernel_slot_current">Bieżący slot (%1$s)</string>
+    <string name="kernel_slot_inactive">Nieaktywny slot (%1$s)</string>
+    <string name="kernel_slot_description">Pakiet obsługuje wybór slotu. Używaj tylko pliku ZIP przeznaczonego dla tego urządzenia.</string>
+    <string name="kernel_slot_unknown">Nie udało się określić bieżącego slotu. Pakiet wybierze miejsce docelowe.</string>
+    <string name="kernel_slot_unsupported">Ten pakiet nie deklaruje standardowego wyboru slotu AnyKernel3. Użyj jego domyślnego celu.</string>
+    <string name="kernel_single_slot">Urządzenie nie zgłasza slotów A/B. Pakiet wybierze miejsce docelowe.</string>
+    <string name="kernel_inactive_warning">Używaj nieaktywnego slotu tylko wtedy, gdy zawiera zgodny system. Thor nie zmienia slotu używanego przy następnym uruchomieniu.</string>
+    <string name="kernel_before_flash">Przed wgraniem</string>
+    <string name="kernel_safety_summary">Użyj zaufanego pliku ZIP dla dokładnego modelu urządzenia i zachowaj obraz do odzyskiwania. Przed wgraniem wymagane będzie potwierdzenie.</string>
+    <string name="kernel_slot_both">Oba sloty (A + B)</string>
+    <string name="kernel_both_warning">Uruchamia cały instalator dwa razy: najpierw dla bieżącego slotu, potem nieaktywnego. Używaj tylko pakietu, którego autor wspiera wielokrotną instalację na obu zainstalowanych systemach. Może to zastąpić oba jądra, usunąć niezmienioną wersję zapasową i powtórzyć wspólne zmiany. Błąd może pozostawić zaktualizowany tylko jeden slot. Thor nie może cofnąć zmian ani zmienić slotu następnego rozruchu.</string>
+    <string name="kernel_both_acknowledge">Rozumiem, że oba sloty mogą zostać zmienione i że ten pakiet wspiera oba zainstalowane systemy oraz wielokrotną instalację.</string>
+    <string name="kernel_both_partial">Co najmniej jedno wykonanie powiodło się, ale nie ukończono pomyślnie obu slotów. Sprawdź każde wykonanie w dzienniku; zmiany nie zostały cofnięte.</string>
+    <string name="kernel_shared_blocked">Inna operacja jądra jest aktywna lub oczekuje na ponowny rozruch. Otwórz narzędzie do wgrywania jądra w Rozszerzeniach, aby ją sprawdzić przed udostępnieniem kolejnego pliku ZIP.</string>
+</resources>

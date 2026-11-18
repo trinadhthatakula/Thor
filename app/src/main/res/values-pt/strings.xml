@@ -44,7 +44,7 @@
     <string name="dynamic_colors">Cores dinâmicas</string>
     <string name="dynamic_colors_desc">Integração com o Material You</string>
     <string name="biometric_lock">Bloqueio biométrico</string>
-    <string name="biometric_lock_desc">Exigir autenticação ao iniciar. Quando ativo, o bloqueio impede capturas e gravações do ecrã do Thor e oculta a pré-visualização nas aplicações recentes.</string>
+    <string name="biometric_lock_desc">Exigir autenticação ao abrir a aplicação principal, bloquear as suas capturas e gravações do ecrã e ocultar a pré-visualização nas aplicações recentes.</string>
     <string name="biometric_not_available">Biometria não configurada ou indisponível</string>
     <string name="active_engine">Motor ativo</string>
     <string name="active_engine_desc">Alternar entre os fornecedores disponíveis</string>
@@ -66,6 +66,7 @@
     <string name="portuguese">Português</string>
     <string name="portuguese_brazil">Português (Brasil)</string>
     <string name="polish">Polaco</string>
+    <string name="russian">Russo</string>
 
     <!-- Common Actions -->
     <string name="cancel">Cancelar</string>
@@ -363,6 +364,10 @@
         <item quantity="one">%1$d aplicação · tocar para congelar</item>
         <item quantity="other">%1$d aplicações · tocar para congelar</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d aplicação · tocar para descongelar</item>
+        <item quantity="other">%1$d aplicações · tocar para descongelar</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Conceda primeiro Root / Shizuku / Dhizuku</string>
     <string name="tile_no_apps_toast">Não há aplicações no Congelador</string>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
@@ -370,6 +375,8 @@
          fired before these packages resolved. -->
     <string name="tile_checking">A verificar…</string>
     <string name="tile_freezing">A congelar…</string>
+    <string name="tile_unfreezing">A descongelar…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Definições do Congelador</string>
@@ -382,8 +389,10 @@
     <string name="auto_freeze_desc">Congelar as aplicações automaticamente quando o ecrã é bloqueado</string>
     <string name="skip_routine_freeze_confirmation">Não confirmar congelamentos de rotina</string>
     <string name="skip_routine_freeze_confirmation_desc">Congelar aplicações de sistema sem perguntar primeiro, exceto quando a lista de remoção as assinala. As marcadas como Expert continuam a avisar e as inseguras continuam a ser recusadas.</string>
-    <string name="add_freezer_to_launcher">Adicionar o Congelador ao launcher</string>
-    <string name="add_freezer_to_launcher_desc">Mostrar as aplicações congeladas como atalhos no ecrã principal em que pode tocar para as abrir</string>
+
+    <string name="disable_shortcuts">Desativar atalhos</string>
+    <string name="disable_shortcuts_desc">Desativa os atalhos do Congelador, incluindo os fixados no ecrã principal</string>
+    <string name="shortcuts_disabled_message">Os atalhos estão desativados no Thor</string>
     <string name="add_to_home_screen">Adicionar ao ecrã principal</string>
     <string name="freeze_all_apps">Congelar tudo no Congelador</string>
     <string name="shortcuts">Atalhos</string>
@@ -490,7 +499,6 @@
     <!-- %1$s is an app name, %2$s a comma-separated list of package names that recorded the
          suspension. Shown when Thor cannot lift a suspension because Android only lets the
          privilege that applied it remove it (API 30+). -->
-    <string name="suspend_owned_by_other_privilege">Não é possível anular a suspensão de %1$s a partir daqui. Foi suspensa por %2$s, e o Android só permite que o mesmo privilégio a levante. Volte a colocar o Thor nesse modo de privilégio e tente novamente.</string>
     <!-- %1$s is an app name. Shown when a preinstalled app cannot be frozen because this device
          refused to disable it and this build of Android reserves "remove for one user" for uid 0.
          Deliberately names no privilege mode: both the Shizuku and the Dhizuku gateway raise it,
@@ -1040,4 +1048,42 @@
     <string name="root_refresh_busy">A aguardar a conclusão das operações root. As novas ações root estão em pausa.</string>
     <string name="root_refresh_timed_out">A verificação de root excedeu o tempo limite. As novas ações root estão em pausa.</string>
     <string name="root_refresh_failed">Não foi possível verificar o acesso root. As novas ações root estão em pausa.</string>
+    <string name="user_app">App do utilizador</string>
+    <string name="uad_filter_system_apps_only">As recomendações do UAD aplicam-se apenas às apps do sistema.</string>
+
+    <!-- Navigation customization -->
+    <string name="customization_navigation">Barra de navegação</string>
+    <string name="customization_navigation_desc">Personalize posição, estilo, etiquetas e formas</string>
+    <string name="navigation_preview_hint">Toque na pré-visualização para experimentar cada destino. As alterações são guardadas ao tocar em Aplicar.</string>
+    <string name="navigation_placement">Posição</string>
+    <string name="navigation_docked">Fixa</string>
+    <string name="navigation_floating">Flutuante</string>
+    <string name="navigation_appearance">Estilo</string>
+    <string name="navigation_expanding">Expansível</string>
+    <string name="navigation_segmented">Segmentado</string>
+    <string name="navigation_standard">Padrão</string>
+    <string name="navigation_labels">Etiquetas</string>
+    <string name="navigation_automatic">Auto</string>
+    <string name="navigation_selected">Selecionada</string>
+    <string name="navigation_all">Todas</string>
+    <string name="navigation_hidden">Ocultas</string>
+    <string name="navigation_icons">Mostrar ícones</string>
+    <string name="navigation_text_only_hint">As etiquetas permanecem visíveis quando os ícones estão ocultos.</string>
+    <string name="navigation_container_shape">Forma da barra</string>
+    <string name="navigation_indicator_shape">Forma da seleção</string>
+    <string name="navigation_default">Predefinida</string>
+    <string name="navigation_round">Redonda</string>
+    <string name="navigation_soft">Suave</string>
+    <string name="navigation_square">Quadrada</string>
+    <string name="navigation_spacing">Espaçamento dos itens</string>
+    <string name="navigation_padding">Espaçamento interior</string>
+    <string name="navigation_margin">Margem flutuante</string>
+    <string name="navigation_elevation">Elevação</string>
+    <string name="navigation_save_failed">Não foi possível guardar o estilo de navegação. Tente Aplicar novamente.</string>
+    <string name="navigation_reset">Repor</string>
+    <string name="navigation_apply">Aplicar</string>
+    <string name="navigation_saving">A guardar…</string>
+    <string name="navigation_dp">%1$d dp</string>
+    <string name="combined_app_lists">Listas de aplicações combinadas</string>
+    <string name="combined_app_lists_desc">Permitir selecionar Utilizador e Sistema em simultâneo em Aplicações e Congelador</string>
 </resources>

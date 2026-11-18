@@ -8,7 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
@@ -187,12 +188,24 @@ fun PortableInstaller(
     onDismiss: () -> Unit,
     viewModel: InstallerViewModel = koinViewModel()
 ) {
+    val kernel by viewModel.kernelPackage.collectAsStateWithLifecycle()
+    kernel?.let { input ->
+        PortableKernelInstaller(input, onDismiss = {
+            viewModel.resetState()
+            onDismiss()
+        })
+        return
+    }
     val observedStates = remember(viewModel) { viewModel.installState.observeSupportCompletion() }
     val observation by observedStates.collectAsStateWithLifecycle(
         initialValue = InstallerSupportObservation(InstallState.Idle),
     )
     val state = observation.state
     val isInstallCallActive by viewModel.isInstallCallActive.collectAsStateWithLifecycle()
+    val canPickDocument by viewModel.canPickDocument.collectAsStateWithLifecycle()
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
+        viewModel.receivePickedDocument(it)
+    }
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
     val grantAllPermissions by viewModel.grantAllPermissions.collectAsStateWithLifecycle()
@@ -232,17 +245,6 @@ fun PortableInstaller(
             onConfirm = { viewModel.confirmLegacyInstallation(confirmation.id) },
             onDismiss = { viewModel.dismissLegacyInstallConfirmation(confirmation.id) },
         )
-    }
-
-    // Auto-start installation process if intent is present
-    LaunchedEffect(Unit) {
-        val activity = context as? ComponentActivity
-        val intent = activity?.intent
-        if (state is InstallState.Idle && intent?.action == Intent.ACTION_VIEW) {
-            intent.data?.let { uri ->
-                viewModel.parsePackage(uri)
-            }
-        }
     }
 
     // Handle System Dialogs
@@ -1054,6 +1056,15 @@ fun PortableInstaller(
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                            }
+                        }
+
+                        if (canPickDocument) {
+                            OutlinedButton(
+                                onClick = { documentPicker.launch(arrayOf("*/*")) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.restore_pick_file))
                             }
                         }
 

@@ -3,7 +3,7 @@
 
 package com.valhalla.thor.data.source.local.room
 
-import androidx.room.Entity
+import androidx.room3.Entity
 
 @Entity(tableName = "extension_data", primaryKeys = ["extensionPackageName", "key"])
 data class ExtensionDataEntity(

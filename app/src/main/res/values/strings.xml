@@ -43,7 +43,7 @@
     <string name="dynamic_colors">Dynamic Colors</string>
     <string name="dynamic_colors_desc">Material You integration</string>
     <string name="biometric_lock">Biometric Lock</string>
-    <string name="biometric_lock_desc">Require authentication on launch. When enabled, blocks screenshots and screen recording of Thor and hides its Recents preview.</string>
+    <string name="biometric_lock_desc">Require authentication when opening the main app. Blocks its screenshots, screen recording and Recents preview.</string>
     <string name="biometric_not_available">Biometrics not enrolled or available</string>
     <string name="active_engine">Active Engine</string>
     <string name="active_engine_desc">Switch between available providers</string>
@@ -65,6 +65,7 @@
     <string name="portuguese">Portuguese</string>
     <string name="portuguese_brazil">Portuguese (Brazil)</string>
     <string name="polish">Polish</string>
+    <string name="russian">Russian</string>
 
     <!-- Common Actions -->
     <string name="cancel">Cancel</string>
@@ -359,10 +360,16 @@
         <item quantity="one">%1$d app · tap to freeze</item>
         <item quantity="other">%1$d apps · tap to freeze</item>
     </plurals>
+    <plurals name="tile_unfreeze_subtitle_format">
+        <item quantity="one">%1$d app · tap to unfreeze</item>
+        <item quantity="other">%1$d apps · tap to unfreeze</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Grant Root / Shizuku / Dhizuku first</string>
     <string name="tile_no_apps_toast">No apps in Freezer</string>
     <string name="tile_checking">Checking…</string>
     <string name="tile_freezing">Freezing…</string>
+    <string name="tile_unfreezing">Unfreezing…</string>
+    <string name="tile_result_action_format">%1$s · %2$s</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
@@ -375,8 +382,10 @@
     <string name="auto_freeze_desc">Freeze apps automatically when screen is locked</string>
     <string name="skip_routine_freeze_confirmation">Don\'t confirm routine freezes</string>
     <string name="skip_routine_freeze_confirmation_desc">Freeze system apps without asking first, unless the removal list flags them. Apps marked Expert still warn, and unsafe ones are still refused.</string>
-    <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
-    <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
+
+    <string name="disable_shortcuts">Disable shortcuts</string>
+    <string name="disable_shortcuts_desc">Turn off Freezer shortcuts, including pinned home-screen shortcuts</string>
+    <string name="shortcuts_disabled_message">Shortcuts are disabled in Thor</string>
     <string name="add_to_home_screen">Add to Home screen</string>
     <string name="freeze_all_apps">Freeze all in Freezer</string>
     <string name="shortcuts">Shortcuts</string>
@@ -483,7 +492,6 @@
     <!-- %1$s is an app name, %2$s a comma-separated list of package names that recorded the
          suspension. Shown when Thor cannot lift a suspension because Android only lets the
          privilege that applied it remove it (API 30+). -->
-    <string name="suspend_owned_by_other_privilege">Can\'t unsuspend %1$s from here. It was suspended by %2$s, and Android only lets the same privilege lift it. Switch Thor back to that privilege mode and try again.</string>
     <!-- %1$s is an app name. Shown when a preinstalled app cannot be frozen because this device
          refused to disable it and this build of Android reserves "remove for one user" for uid 0.
          Deliberately names no privilege mode: both the Shizuku and the Dhizuku gateway raise it,
@@ -1045,4 +1053,42 @@
     <string name="root_refresh_busy">Waiting for root work to finish. New root actions are paused.</string>
     <string name="root_refresh_timed_out">The root check timed out. New root actions are paused.</string>
     <string name="root_refresh_failed">Could not check root access. New root actions are paused.</string>
+    <string name="user_app">User app</string>
+    <string name="uad_filter_system_apps_only">UAD recommendations apply only to system apps.</string>
+
+    <!-- Navigation customization -->
+    <string name="customization_navigation">Navigation bar</string>
+    <string name="customization_navigation_desc">Customize placement, style, labels and shapes</string>
+    <string name="navigation_preview_hint">Tap the preview to try each destination. Changes are saved when you tap Apply.</string>
+    <string name="navigation_placement">Placement</string>
+    <string name="navigation_docked">Docked</string>
+    <string name="navigation_floating">Floating</string>
+    <string name="navigation_appearance">Style</string>
+    <string name="navigation_expanding">Expanding</string>
+    <string name="navigation_segmented">Segmented</string>
+    <string name="navigation_standard">Standard</string>
+    <string name="navigation_labels">Labels</string>
+    <string name="navigation_automatic">Auto</string>
+    <string name="navigation_selected">Selected</string>
+    <string name="navigation_all">All</string>
+    <string name="navigation_hidden">Hidden</string>
+    <string name="navigation_icons">Show icons</string>
+    <string name="navigation_text_only_hint">Labels stay visible when icons are hidden.</string>
+    <string name="navigation_container_shape">Bar shape</string>
+    <string name="navigation_indicator_shape">Selection shape</string>
+    <string name="navigation_default">Default</string>
+    <string name="navigation_round">Round</string>
+    <string name="navigation_soft">Soft</string>
+    <string name="navigation_square">Square</string>
+    <string name="navigation_spacing">Item spacing</string>
+    <string name="navigation_padding">Inner padding</string>
+    <string name="navigation_margin">Floating margin</string>
+    <string name="navigation_elevation">Elevation</string>
+    <string name="navigation_save_failed">Could not save the navigation style. Try Apply again.</string>
+    <string name="navigation_reset">Reset</string>
+    <string name="navigation_apply">Apply</string>
+    <string name="navigation_saving">Saving…</string>
+    <string name="navigation_dp">%1$d dp</string>
+    <string name="combined_app_lists">Combined app lists</string>
+    <string name="combined_app_lists_desc">Allow User and System to be selected together in Apps and Freezer</string>
 </resources>

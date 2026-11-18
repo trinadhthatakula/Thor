@@ -76,7 +76,7 @@
     <string name="settings_summary_restore_interrupted">Um restauro não terminou</string>
     <string name="settings_summary_backup">Restaurar um arquivo ou alterar a frase-passe</string>
     <string name="settings_summary_unprivileged">Necessita de root, Shizuku ou Dhizuku</string>
-    <string name="settings_summary_customization">Tipos de letra e disposições de ações</string>
+    <string name="settings_summary_customization">Tipos de letra, navegação e disposição das ações</string>
 
     <!-- ── Categoria de personalização e ações ─────────────────────────────────────────── -->
     <string name="settings_category_customization">Personalização</string>

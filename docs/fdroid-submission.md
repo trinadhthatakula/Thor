@@ -198,7 +198,7 @@ flavour, which no F-Droid build can reach.
 `fastlane/metadata/android/en-US/changelogs/` held exactly one file, `1600.txt`, while `versionCode`
 was `1931`. F-Droid reads `changelogs/<versionCode>.txt` for the "What's New" text, so every release
 since 1600 shipped without one — in IzzyOnDroid too. `1931.txt` was added in the same commit as this
-document, copied from `release-notes/v1.93.1/playstore.txt`.
+document; its preserved copy is `fastlane/metadata/android/en-US/changelogs/1931.txt`.
 
 The follow-up this section asked for — *"worth adding to the release script rather than the
 checklist"* — has since been done. `copy_playstore_notes` in `fastlane/Fastfile` copies

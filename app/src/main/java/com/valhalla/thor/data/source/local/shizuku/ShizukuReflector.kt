@@ -149,6 +149,12 @@ class ShizukuReflector(
     fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
         Shizuku.setAppSuspended(context, packageName, suspended)
 
+    suspend fun isAppSuspendedByThor(packageName: String): Boolean? =
+        Shizuku.readAppSuspension(context, packageName)?.thorOwners?.isNotEmpty()
+
+    suspend fun changeAppSuspension(packageName: String, suspended: Boolean) =
+        Shizuku.changeAppSuspension(context, packageName, suspended)
+
     /**
      * The last rung of the system-app freeze: remove for this user, **keep the data**.
      *

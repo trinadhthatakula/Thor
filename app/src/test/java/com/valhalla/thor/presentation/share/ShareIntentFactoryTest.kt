@@ -3,12 +3,13 @@
 
 package com.valhalla.thor.presentation.share
 
+import androidx.room3.support.getSupportWrapper
 import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.net.toUri
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.room.AppDatabase
@@ -128,7 +129,7 @@ class ShareIntentFactoryTest {
         val output = output(taskId, ordinal = 0, displayName = "partial.apk")
         persistReadyTask(taskId, listOf(output))
         writeOutput(output)
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_tasks SET state = 'READY_PARTIAL' WHERE task_id = ?",
             arrayOf(taskId.toString()),
         )
@@ -289,7 +290,7 @@ class ShareIntentFactoryTest {
         )
         persistReadyTask(taskId, outputs)
         outputs.forEach { writeOutput(it) }
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "DELETE FROM data_task_outputs WHERE task_id = ? AND item_ordinal = 1",
             arrayOf(taskId.toString()),
         )
@@ -308,15 +309,15 @@ class ShareIntentFactoryTest {
         )
         persistReadyTask(taskId, outputs)
         outputs.forEach { writeOutput(it) }
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_task_items SET state = 'FAILED' WHERE task_id = ? AND ordinal = 1",
             arrayOf(taskId.toString()),
         )
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "DELETE FROM data_task_outputs WHERE task_id = ? AND item_ordinal = 1",
             arrayOf(taskId.toString()),
         )
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_tasks SET state = 'READY_PARTIAL' WHERE task_id = ?",
             arrayOf(taskId.toString()),
         )
@@ -377,7 +378,7 @@ class ShareIntentFactoryTest {
         val output = output(taskId, ordinal = 0, displayName = "published.apk")
         persistReadyTask(taskId, listOf(output))
         writeOutput(output)
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_task_outputs SET state = 'PUBLISHED' WHERE task_id = ?",
             arrayOf(taskId.toString()),
         )
@@ -391,7 +392,7 @@ class ShareIntentFactoryTest {
         val taskId = newTaskId()
         val output = output(taskId, ordinal = 0, displayName = "escape.apk")
         persistReadyTask(taskId, listOf(output))
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_task_outputs SET private_relative_path = ? WHERE task_id = ?",
             arrayOf(
                 "share_ready/item-$taskId-0/com.example.alpha/../escape.apk",
@@ -474,7 +475,7 @@ class ShareIntentFactoryTest {
         val output = output(taskId, ordinal = 0, displayName = "stale.apk")
         persistReadyTask(taskId, listOf(output))
         writeOutput(output)
-        database.openHelper.writableDatabase.execSQL(
+        database.getSupportWrapper().execSQL(
             "UPDATE data_tasks SET state = 'SUCCEEDED' WHERE task_id = ?",
             arrayOf(taskId.toString()),
         )

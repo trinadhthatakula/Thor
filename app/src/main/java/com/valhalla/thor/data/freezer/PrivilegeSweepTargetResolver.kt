@@ -10,6 +10,7 @@ import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeCandidate
+import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -22,18 +23,23 @@ import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
+import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 /** Android-backed inputs whose snapshots must be taken before a durable sweep is enqueued. */
 interface PrivilegeSweepResolutionRuntime {
     val userId: Int
+
+    suspend fun isAppSuspendedByThor(packageName: String): Boolean? = null
 
     /** Returns one candidate lookup closed over one UAD snapshot for the complete resolution pass. */
     fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate
@@ -43,13 +49,26 @@ interface PrivilegeSweepResolutionRuntime {
 class DefaultPrivilegeSweepResolutionRuntime(
     private val stateReader: AppFreezeStateReader,
     private val uadHelper: UadHelper,
+    private val systemRepository: SystemRepository,
 ) : PrivilegeSweepResolutionRuntime {
     override val userId: Int get() = thorUserId
+
+    override suspend fun isAppSuspendedByThor(packageName: String): Boolean? =
+        systemRepository.isAppSuspendedByThor(packageName)
 
     override fun candidatesFor(op: BulkOp): (String) -> FreezeCandidate {
         val uad = if (op == BulkOp.FREEZE) uadHelper.snapshot() else UadSnapshot.UNFILTERED
         return { packageName -> stateReader.candidateOf(packageName, uad) }
     }
+}
+
+/** Both directions from one live watchlist read. Mixed lists restore frozen apps first. */
+data class WatchlistFreezeCandidates(
+    val freezeTargets: List<String>,
+    val unfreezeTargets: List<String>,
+) {
+    val operation: BulkOp get() = if (unfreezeTargets.isNotEmpty()) BulkOp.UNFREEZE else BulkOp.FREEZE
+    val targets: List<String> get() = if (operation == BulkOp.UNFREEZE) unfreezeTargets else freezeTargets
 }
 
 /**
@@ -65,6 +84,32 @@ class PrivilegeSweepTargetResolver(
     private val preferenceRepository: PreferenceRepository,
     private val runtime: PrivilegeSweepResolutionRuntime,
 ) {
+    suspend fun resolveWatchlistCandidates(): WatchlistFreezeCandidates {
+        val members = freezerRepository.getAllPackageNames()
+        if (members.isEmpty()) return WatchlistFreezeCandidates(emptyList(), emptyList())
+        // The freeze verdict carries UAD policy, but never blocks recovery of a frozen app.
+        val candidateOf = runtime.candidatesFor(BulkOp.FREEZE)
+        val freeze = mutableListOf<String>()
+        val unfreeze = mutableListOf<String>()
+        for (packageName in members) {
+            val candidate = candidateOf(packageName)
+            when (candidate.state) {
+                FreezeState.ACTIVE -> if (!candidate.blockedFromFreeze) freeze.add(packageName)
+                FreezeState.FROZEN -> {
+                    val externalOnly = candidate.isDisabled == false && candidate.isSuspended == true &&
+                        runtime.isAppSuspendedByThor(packageName) == false
+                    if (externalOnly) {
+                        if (!candidate.blockedFromFreeze) freeze.add(packageName)
+                    } else {
+                        unfreeze.add(packageName)
+                    }
+                }
+                FreezeState.ABSENT -> Unit
+            }
+        }
+        return WatchlistFreezeCandidates(normalizeSweepTargets(freeze), normalizeSweepTargets(unfreeze))
+    }
+
     suspend fun resolve(
         request: BulkRequest,
         source: PrivilegeSweepSource,
@@ -130,6 +175,15 @@ class PrivilegeSweepSurfaceLauncher(
     @Named("io") ioDispatcher: CoroutineDispatcher,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val watchlistToggleMutex = Mutex()
+
+    /** The process owns both fresh-state resolution and enqueue, even after the shade closes. */
+    fun launchWatchlistToggle(source: PrivilegeSweepSource): Deferred<PrivilegeSweepLaunchResult> =
+        scope.async {
+            watchlistToggleMutex.withLock {
+                launchWatchlistToggleSurfaceSweep(resolver, controller, source)
+            }
+        }
 
     fun launch(
         request: BulkRequest,
@@ -137,6 +191,32 @@ class PrivilegeSweepSurfaceLauncher(
     ): Deferred<PrivilegeSweepLaunchResult> = scope.async {
         launchSurfaceSweep(resolver, controller, request, source)
     }
+}
+
+/** A running tile sweep wins over a new toggle; idle taps resolve their direction from live state. */
+suspend fun launchWatchlistToggleSurfaceSweep(
+    resolver: PrivilegeSweepTargetResolver,
+    controller: PrivilegeSweepController,
+    source: PrivilegeSweepSource,
+): PrivilegeSweepLaunchResult {
+    suspend fun runningSweep(): PrivilegeSweepLaunchResult.Accepted? {
+        val retained = controller.observeLatest(source).first() ?: return null
+        if (retained.phase != PrivilegeSweepPhase.QUEUED && retained.phase != PrivilegeSweepPhase.RUNNING) {
+            return null
+        }
+        return PrivilegeSweepLaunchResult.Accepted(retained.requestId, retained.workId, coalesced = true)
+    }
+
+    runningSweep()?.let { return it }
+    val candidates = resolver.resolveWatchlistCandidates()
+    val spec = resolver.resolveSelection(
+        operation = candidates.operation.toSweepOperation(),
+        packageNames = candidates.targets,
+        source = source,
+    )
+    // Another surface may have accepted work while the Room/preference reads were suspended.
+    runningSweep()?.let { return it }
+    return controller.launch(spec)
 }
 
 /** Reconnects a short-lived surface to accepted work instead of enqueueing a duplicate request. */

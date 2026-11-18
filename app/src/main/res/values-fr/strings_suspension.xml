@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">Suspension ignorée : Thor ne peut pas vérifier une suspension indépendante. Utilisez le mode Gel ; les restrictions existantes sont conservées.</string>
+    <string name="suspension_ownership_unknown">Thor ne peut pas vérifier qui contrôle la suspension. La pause existante est conservée ; réessayez après avoir vérifié la restriction.</string>
+    <string name="suspension_change_unverified">Thor ne peut pas vérifier le changement de suspension. Actualisez et réessayez.</string>
+    <string name="suspend_wrong_privilege">La suspension de Thor appartient à un autre mode de privilèges. Revenez à ce mode pour la supprimer.</string>
+    <string name="thaw_external_pause">%1$s : restriction de Thor supprimée ; toujours en pause par %2$s.</string>
+    <string name="thaw_external_pause_generic">%1$s : restriction de Thor supprimée ; toujours en pause par une autre application.</string>
+    <string name="sweep_external_pause_notice">Certaines applications restaurées restent en pause par d’autres applications.</string>
+</resources>

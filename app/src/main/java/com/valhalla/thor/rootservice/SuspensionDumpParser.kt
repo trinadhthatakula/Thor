@@ -46,6 +46,7 @@ internal fun parseSuspensionDump(
     userId: Int,
     sdkInt: Int,
     trustedStringOwners: Set<String> = emptySet(),
+    trustedDialogs: Set<String> = emptySet(),
 ): SuspensionSnapshot {
     if (!Protocol.isValidPackageIdentity(packageName) || userId < 0) {
         return unknownSuspensionSnapshot(Protocol.REASON_INVALID_ARGUMENT)
@@ -65,7 +66,7 @@ internal fun parseSuspensionDump(
         if (trimmed.startsWith("Permission Denial:")) {
             return SuspensionSnapshot(Protocol.STATUS_REFUSED, Protocol.REASON_PLATFORM_REFUSED)
         }
-        val safe = withoutTrustedDialog(trimmed, trustedStringOwners)
+        val safe = withoutTrustedDialog(trimmed, trustedStringOwners, trustedDialogs)
             ?: return unknownSuspensionSnapshot(Protocol.REASON_AMBIGUOUS_DIALOG)
         lines += (raw.length - raw.trimStart().length) to safe
     }
@@ -206,7 +207,7 @@ private fun parseOwner(key: String, targetUser: Int, sdkInt: Int): SuspensionOwn
         ?.let { SuspensionOwnerIdentity(it, ownerUser) }
 }
 
-private fun withoutTrustedDialog(line: String, trustedStringOwners: Set<String>): String? {
+private fun withoutTrustedDialog(line: String, trustedStringOwners: Set<String>, trustedDialogs: Set<String>): String? {
     val infoIndex = line.indexOf(" dialogInfo=")
     val messageIndex = line.indexOf(" dialogMessage=")
     if (infoIndex < 0 && messageIndex < 0) return line
@@ -223,7 +224,7 @@ private fun withoutTrustedDialog(line: String, trustedStringOwners: Set<String>)
             if (end < 0) return null
             val dialog = value.substring(0, end + 1)
             if (!RESOURCE_DIALOG.matches(dialog)) {
-                if (dialog !in THOR_DIALOGS || owner !in trustedStringOwners) return null
+                if ((dialog !in THOR_DIALOGS && dialog !in trustedDialogs) || owner !in trustedStringOwners) return null
             }
             end + 1
         }

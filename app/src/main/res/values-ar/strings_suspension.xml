@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">تم تخطي التعليق: لا يستطيع Thor التحقق من تعليق مستقل. استخدم وضع التجميد؛ تم الاحتفاظ بالقيود الحالية.</string>
+    <string name="suspension_ownership_unknown">تعذر على Thor التحقق من مالك التعليق. تم الاحتفاظ بالإيقاف الحالي؛ أعد المحاولة بعد التحقق من قيد التطبيق.</string>
+    <string name="suspension_change_unverified">تعذر على Thor التحقق من تغيير التعليق. حدّث وحاول مجددًا.</string>
+    <string name="suspend_wrong_privilege">تعليق Thor تابع لوضع صلاحيات آخر. عد إلى ذلك الوضع لإزالته.</string>
+    <string name="thaw_external_pause">%1$s: تمت إزالة قيد Thor؛ لا يزال موقوفًا بواسطة %2$s.</string>
+    <string name="thaw_external_pause_generic">%1$s: تمت إزالة قيد Thor؛ لا يزال موقوفًا بواسطة تطبيق آخر.</string>
+    <string name="sweep_external_pause_notice">بعض التطبيقات المستعادة لا تزال موقوفة بواسطة تطبيقات أخرى.</string>
+</resources>

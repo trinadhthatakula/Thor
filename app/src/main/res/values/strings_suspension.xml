@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="suspend_independent_unavailable">Suspend skipped: Thor cannot verify a separate suspension. Use Freeze mode; existing restrictions were kept.</string>
+    <string name="suspension_ownership_unknown">Thor could not verify suspension ownership. The existing pause was preserved; retry after checking the app restriction.</string>
+    <string name="suspension_change_unverified">Thor could not verify the suspension change. Refresh and try again.</string>
+    <string name="suspend_wrong_privilege">Thor’s suspension belongs to another privilege mode. Switch back to that mode to remove it.</string>
+    <string name="thaw_external_pause">%1$s: Thor restriction removed; still paused by %2$s.</string>
+    <string name="thaw_external_pause_generic">%1$s: Thor restriction removed; still paused by another app.</string>
+    <string name="sweep_external_pause_notice">Some restored apps remain paused by other apps.</string>
+</resources>

@@ -109,6 +109,16 @@ enum class SettingsRowId(
         R.string.customization_fonts,
         R.string.customization_fonts_desc,
     ),
+    COMBINED_APP_LISTS(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.combined_app_lists,
+        R.string.combined_app_lists_desc,
+    ),
+    NAVIGATION_BAR(
+        SettingsCategory.CUSTOMIZATION,
+        R.string.customization_navigation,
+        R.string.customization_navigation_desc,
+    ),
     APP_INFO_ACTIONS(
         SettingsCategory.CUSTOMIZATION,
         R.string.customization_app_info_actions,
@@ -142,10 +152,10 @@ enum class SettingsRowId(
         R.string.skip_routine_freeze_confirmation,
         R.string.skip_routine_freeze_confirmation_desc,
     ),
-    ADD_FREEZER_TO_LAUNCHER(
+    DISABLE_SHORTCUTS(
         SettingsCategory.FREEZER,
-        R.string.add_freezer_to_launcher,
-        R.string.add_freezer_to_launcher_desc,
+        R.string.disable_shortcuts,
+        R.string.disable_shortcuts_desc,
     ),
     UNFREEZE_ALL(
         SettingsCategory.FREEZER,
@@ -173,6 +183,7 @@ enum class SettingsRowId(
 
     // ── Security ────────────────────────────────────────────────────────────────────────────────
     BIOMETRIC_LOCK(SettingsCategory.SECURITY, R.string.biometric_lock, R.string.biometric_lock_desc),
+    INSTALLER_APP_LOCK(SettingsCategory.SECURITY, R.string.installer_app_lock, R.string.installer_app_lock_desc),
     USAGE_ACCESS(
         SettingsCategory.SECURITY,
         R.string.usage_access,
@@ -302,4 +313,5 @@ internal val AppLanguage.labelRes: Int
         AppLanguage.Portuguese -> R.string.portuguese
         AppLanguage.PortugueseBrazil -> R.string.portuguese_brazil
         AppLanguage.Polish -> R.string.polish
+        AppLanguage.Russian -> R.string.russian
     }

@@ -4,6 +4,9 @@
 package com.valhalla.thor.presentation.theme
 
 import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialExpressiveTheme
@@ -19,7 +22,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
 import com.valhalla.thor.domain.model.FontPreset
 
 /**
@@ -139,15 +141,21 @@ fun ThorTheme(
         else -> AsgardianLightColorScheme
     }
 
-    //make status bar icon match the dark theme mode
+    // Activity's edge-to-edge implementation owns both icon appearance and navigation scrims.
+    // Supply Thor's effective theme so a per-app override also applies after a live theme change.
     val view = LocalView.current
-    val activity = LocalActivity.current
+    val activity = LocalActivity.current as? ComponentActivity
     if (!view.isInEditMode) {
         SideEffect {
-            activity?.window?.let {
-                WindowCompat.getInsetsController(it, view)
-                    .isAppearanceLightStatusBars = !darkTheme
-            }
+            activity?.enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.auto(
+                    android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT,
+                ) { darkTheme },
+                navigationBarStyle = SystemBarStyle.auto(
+                    android.graphics.Color.argb(0xe6, 0xff, 0xff, 0xff),
+                    android.graphics.Color.argb(0x80, 0x1b, 0x1b, 0x1b),
+                ) { darkTheme },
+            )
         }
     }
 

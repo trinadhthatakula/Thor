@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.util.restorationFeedback
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.BuildConfig
@@ -735,7 +736,10 @@ class MainViewModel(
 
                         val result = manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
                         if (result.isSuccess) {
-                            _effect.send(MainSideEffect.LaunchApp(app.packageName))
+                            val restored = result.getOrThrow()
+                            if (restored.suspensionRemains) {
+                                _effect.send(MainSideEffect.Message(restored.restorationFeedback(app.appName ?: app.packageName)))
+                            } else _effect.send(MainSideEffect.LaunchApp(app.packageName))
                         } else {
                             // asUiText, not `.message`: a refusal arrives as a UiTextException whose
                             // message is null, which renders as a bare "Error: ".
@@ -907,8 +911,8 @@ class MainViewModel(
 
                 // 7. QUICK ACTIONS
                 is AppClickAction.Kill -> quickAction(action) { manageAppUseCase.forceStop(it.packageName) }
-                is AppClickAction.Freeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, true) }
-                is AppClickAction.UnFreeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, false) }
+                is AppClickAction.Freeze -> quickAction(action) { manageAppUseCase.freezeForFreezer(it.packageName, com.valhalla.thor.domain.model.FreezerMode.FREEZE) }
+                is AppClickAction.UnFreeze -> quickAction(action) { manageAppUseCase.forceUnfreeze(it.packageName) }
                 // The only quick action with a number to report. A null count is not zero — the
                 // clear worked and the measurement did not — so it falls back to the plain message
                 // rather than saying "0 B".
@@ -1336,7 +1340,12 @@ class MainViewModel(
                 .onSuccess { value ->
                     _effect.send(
                         MainSideEffect.Message(
-                            successMessage?.invoke(app, value) ?: getSuccessMessage(
+                            successMessage?.invoke(app, value) ?: if (
+                                (action is AppClickAction.UnFreeze || action is AppClickAction.UnSuspend) &&
+                                value is com.valhalla.thor.domain.model.SuspensionChange && value.suspensionRemains
+                            )
+                                value.restorationFeedback(app.appName ?: app.packageName)
+                            else getSuccessMessage(
                                 action,
                                 app.appName ?: app.packageName
                             ),

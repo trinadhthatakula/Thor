@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.NavigationBarPreferences
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
@@ -164,10 +165,14 @@ class PreferenceRepositoryImpl(
         val USER_SELECTED_FILTER = stringPreferencesKey("user_app_selected_filter")
         val SYSTEM_FILTER_TYPE = stringPreferencesKey("system_app_filter_type")
         val SYSTEM_SELECTED_FILTER = stringPreferencesKey("system_app_selected_filter")
+        val COMBINED_APP_LISTS_ENABLED = booleanPreferencesKey("combined_app_lists_enabled")
+        val COMBINED_FILTER_TYPE = stringPreferencesKey("combined_app_filter_type")
+        val COMBINED_SELECTED_FILTER = stringPreferencesKey("combined_app_selected_filter")
         val SHOW_REINSTALL_ALL = booleanPreferencesKey("show_reinstall_all")
 
         // Navigation
         val DEFAULT_TAB = stringPreferencesKey("default_tab")
+        val NAVIGATION_BAR = stringPreferencesKey("navigation_bar")
 
         // Home tiles
         val SHOW_INSTALLER_TILE = booleanPreferencesKey("show_installer_tile")
@@ -181,6 +186,7 @@ class PreferenceRepositoryImpl(
 
         // Security
         val BIOMETRIC_LOCK = booleanPreferencesKey("biometric_lock")
+        val INSTALLER_APP_LOCK = booleanPreferencesKey("installer_app_lock")
 
         // Work Mode
         val PRIVILEGE_MODE = stringPreferencesKey("privilege_mode")
@@ -193,6 +199,8 @@ class PreferenceRepositoryImpl(
 
         // Auto Freeze
         val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
+        val DISABLE_SHORTCUTS = booleanPreferencesKey("disable_shortcuts")
+        // Legacy positive setting; only an explicitly saved false remains an opt out.
         val ADD_FREEZER_TO_LAUNCHER = booleanPreferencesKey("add_freezer_to_launcher")
         val FREEZER_MODE = stringPreferencesKey("freezer_mode")
         val SKIP_ROUTINE_FREEZE_CONFIRMATION =
@@ -278,9 +286,20 @@ class PreferenceRepositoryImpl(
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.SHOW_REINSTALL_ALL] = isVisible }
     }
 
+    /** Persists the multiselect opt-in without changing the saved source-specific filters. */
+    override suspend fun setCombinedAppListsEnabled(enabled: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.COMBINED_APP_LISTS_ENABLED] = enabled }
+    }
+
     override suspend fun setDefaultTab(tab: DefaultTab) {
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.DEFAULT_TAB] = tab.name }
     }
+
+    /** Saves the normalized style atomically and reports whether the guarded write succeeded. */
+    override suspend fun setNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean =
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.NAVIGATION_BAR] = NavigationPreferencesCodec.encode(preferences)
+        }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) { it[Keys.SHOW_INSTALLER_TILE] = isVisible }
@@ -316,9 +335,15 @@ class PreferenceRepositoryImpl(
      * `announce = false`: the caller is told directly and says something more useful than the
      * generic notice. See [PreferenceRepository.setBiometricLock].
      */
-    override suspend fun setBiometricLock(enabled: Boolean): Boolean =
+    override suspend fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean?): Boolean =
         context.dataStore.guardedWrite(SETTINGS_STORE, announce = false) {
             it[Keys.BIOMETRIC_LOCK] = enabled
+            extendToInstaller?.let { extend -> it[Keys.INSTALLER_APP_LOCK] = extend }
+        }
+
+    override suspend fun setInstallerAppLock(enabled: Boolean): Boolean =
+        context.dataStore.guardedWrite(SETTINGS_STORE, announce = false) {
+            it[Keys.INSTALLER_APP_LOCK] = enabled
         }
 
     // --- Work Mode ---
@@ -347,12 +372,11 @@ class PreferenceRepositoryImpl(
             else it[Keys.LANGUAGE] = language
         }
 
-    override suspend fun setExportDirUri(uri: String?) {
+    override suspend fun setExportDirUri(uri: String?): Boolean =
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             if (uri == null) it.remove(Keys.EXPORT_DIR_URI)
             else it[Keys.EXPORT_DIR_URI] = uri
         }
-    }
 
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
@@ -366,9 +390,10 @@ class PreferenceRepositoryImpl(
         }
     }
 
-    override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
+    override suspend fun setDisableShortcuts(disabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
-            it[Keys.ADD_FREEZER_TO_LAUNCHER] = enabled
+            it[Keys.DISABLE_SHORTCUTS] = disabled
+            it.remove(Keys.ADD_FREEZER_TO_LAUNCHER)
         }
     }
 
@@ -536,14 +561,18 @@ class PreferenceRepositoryImpl(
     }
 }
 
+/** Selects the category key belonging to the User, System or combined filter profile. */
 private fun appFilterTypeKey(type: AppListType): Preferences.Key<String> = when (type) {
     AppListType.USER -> Keys.USER_FILTER_TYPE
     AppListType.SYSTEM -> Keys.SYSTEM_FILTER_TYPE
+    AppListType.ALL -> Keys.COMBINED_FILTER_TYPE
 }
 
+/** Selects the chip key belonging to the User, System or combined filter profile. */
 private fun appSelectedFilterKey(type: AppListType): Preferences.Key<String> = when (type) {
     AppListType.USER -> Keys.USER_SELECTED_FILTER
     AppListType.SYSTEM -> Keys.SYSTEM_SELECTED_FILTER
+    AppListType.ALL -> Keys.COMBINED_SELECTED_FILTER
 }
 
 /** Write the selected tab's complete pair in one edit, leaving the legacy fallback untouched. */
@@ -567,12 +596,14 @@ internal suspend fun DataStore<Preferences>.writeAppFilter(
     }
 }
 
+/** Restores a normalized profile; only wholly absent individual profiles inherit legacy filters. */
 private fun Preferences.appFilterFor(type: AppListType): AppFilterPreferences {
     val savedType = this[appFilterTypeKey(type)]
     val savedSelection = this[appSelectedFilterKey(type)]
     // Only a wholly absent profile inherits the old pair. A partial profile must never combine a
     // new category with a legacy chip, or vice versa, because those values may mean different things.
-    val useLegacy = savedType == null && savedSelection == null
+    // The new combined view starts unfiltered instead of inheriting an old single-source filter.
+    val useLegacy = type != AppListType.ALL && savedType == null && savedSelection == null
     val typeToken = if (useLegacy) this[Keys.FILTER_TYPE] else savedType
     val selection = if (useLegacy) this[Keys.SELECTED_FILTER] else savedSelection
     val filterType = when (typeToken) {
@@ -815,7 +846,10 @@ internal fun Preferences.toUserPreferences(
         appSortOrder = sortOrder,
         userAppFilter = prefs.appFilterFor(AppListType.USER),
         systemAppFilter = prefs.appFilterFor(AppListType.SYSTEM),
+        combinedAppListsEnabled = prefs[Keys.COMBINED_APP_LISTS_ENABLED] ?: false,
+        combinedAppFilter = prefs.appFilterFor(AppListType.ALL),
         defaultTab = defaultTab,
+        navigationBar = NavigationPreferencesCodec.decode(prefs[Keys.NAVIGATION_BAR]),
         showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
         showInstallerTile = prefs[Keys.SHOW_INSTALLER_TILE] ?: true,
         showExtensionsTile = prefs[Keys.SHOW_EXTENSIONS_TILE] ?: true,
@@ -824,13 +858,15 @@ internal fun Preferences.toUserPreferences(
         useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
         useAmoled = prefs[Keys.USE_AMOLED] ?: false,
         biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
+        installerAppLockEnabled = prefs[Keys.INSTALLER_APP_LOCK] ?: false,
         preferredPrivilegeMode = privilegeMode,
         selectedRootManagerPackage = if (localStateDegraded) null
             else local[LocalKeys.SELECTED_ROOT_MANAGER_PACKAGE],
         language = prefs[Keys.LANGUAGE],
         autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
         freezerMode = freezerMode,
-        addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
+        disableShortcuts = prefs[Keys.DISABLE_SHORTCUTS]
+            ?: (prefs[Keys.ADD_FREEZER_TO_LAUNCHER] == false),
         // Only a healthy absent key uses the default; an unreadable choice cannot authorize removal.
         allowSystemAppRemovalFallback = !localStateDegraded &&
             (local[LocalKeys.ALLOW_SYSTEM_APP_REMOVAL_FALLBACK] ?: true),

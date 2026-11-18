@@ -53,6 +53,24 @@ class RoomTaskQueueRepositoryTest {
     }
 
     @Test
+    fun `successful unfreeze retains external pause warning without becoming failure`() {
+        val restored = target(0, PrivilegeSweepTargetState.SUCCEEDED).copy(
+            resultCode = PrivilegeSweepResultCode("EXTERNAL_SUSPENSION_REMAINS"))
+        val detail = sweep(
+            state = PrivilegeSweepRequestState.SUCCEEDED,
+            targets = listOf(restored),
+            terminal = StoredSweepTerminal.SUCCEEDED,
+        ).toQueuedDetail()
+
+        assertEquals(TaskLifecyclePhase.SUCCEEDED, detail.summary.phase)
+        assertEquals("SUCCEEDED", detail.resultCode)
+        assertTrue(detail.hasWarnings)
+        assertEquals(listOf("EXTERNAL_SUSPENSION_REMAINS"), detail.warningCodes)
+        assertEquals("SWEEP_TARGET_SUCCEEDED", detail.lines.single().messageCode)
+        assertEquals(listOf(restored.packageName, "EXTERNAL_SUSPENSION_REMAINS"), detail.lines.single().arguments)
+    }
+
+    @Test
     fun `independent queues retain their own fifo while both may run`() = runTest {
         val dataFirst = dataTask(sequence = 1, state = DataTaskState.RUNNING)
         val dataSecond = dataTask(sequence = 2, state = DataTaskState.QUEUED)

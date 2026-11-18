@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.NavigationBarPreferences
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppActionId
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -203,7 +205,7 @@ class SettingsViewModel(
      * is facing, so the message names the state the lock is *actually* in — the opposite of the one
      * they just asked for.
      */
-    fun setBiometricLock(enabled: Boolean) {
+    fun setBiometricLock(enabled: Boolean, extendToInstaller: Boolean? = null) {
         viewModelScope.launch {
             if (enabled && !biometricHelper.canAuthenticate()) {
                 _events.send(
@@ -216,7 +218,7 @@ class SettingsViewModel(
                 )
                 return@launch
             }
-            if (!preferenceRepository.setBiometricLock(enabled)) {
+            if (!preferenceRepository.setBiometricLock(enabled, extendToInstaller)) {
                 _events.send(
                     UiText.StringResource(
                         if (enabled) R.string.biometric_lock_not_saved_still_off
@@ -227,13 +229,30 @@ class SettingsViewModel(
         }
     }
 
+    fun setInstallerAppLock(enabled: Boolean) {
+        viewModelScope.launch {
+            if (!preferenceRepository.setInstallerAppLock(enabled)) {
+                _events.send(UiText.StringResource(R.string.installer_lock_not_saved))
+            }
+        }
+    }
+
     fun setPrivilegeMode(mode: PrivilegeMode?) {
         viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
+    }
+
+    /** Saves the combined-list opt-in asynchronously through the preference repository. */
+    fun setCombinedAppListsEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setCombinedAppListsEnabled(enabled) }
     }
 
     fun setDefaultTab(tab: DefaultTab) {
         viewModelScope.launch { preferenceRepository.setDefaultTab(tab) }
     }
+
+    /** Reports the style write result so the editor can retain a failed draft for retry. */
+    suspend fun applyNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean =
+        preferenceRepository.setNavigationBarPreferences(preferences)
 
     fun setReinstallAllCardVisibility(visible: Boolean) {
         viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
@@ -304,10 +323,11 @@ class SettingsViewModel(
         }
     }
 
-    fun setAddFreezerToLauncher(enabled: Boolean) {
+    fun setDisableShortcuts(disabled: Boolean) {
         viewModelScope.launch {
-            preferenceRepository.setAddFreezerToLauncher(enabled)
-            appShortcuts.syncDynamicShortcuts(enabled)
+            preferenceRepository.setDisableShortcuts(disabled)
+            val prefs = preferenceRepository.userPreferences.first()
+            appShortcuts.syncShortcuts(!prefs.settingsLost && !prefs.disableShortcuts)
         }
     }
 

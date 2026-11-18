@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_hub_choose_folder">Elegir carpeta</string>
+    <string name="backup_hub_custom_folder">Carpeta personalizada</string>
+    <string name="backup_hub_delete_access">Se denegó el acceso al almacenamiento. Restablece el acceso a la carpeta y vuelve a intentarlo.</string>
+    <string name="backup_hub_delete_failed">No se pudo eliminar %1$s.</string>
+    <string name="backup_hub_delete_missing">No se encontró el archivo. Actualiza la lista.</string>
+    <string name="backup_hub_delete_read_only">Esta ubicación es de solo lectura.</string>
+    <string name="backup_hub_delete_unavailable">El proveedor de almacenamiento no completó la eliminación. Comprueba la ubicación y vuelve a intentarlo.</string>
+    <string name="backup_hub_empty_saved_desc">Crea una copia de seguridad o exporta una aplicación para verla aquí.</string>
+    <string name="backup_hub_empty_saved_title">No hay archivos guardados</string>
+    <string name="backup_hub_folder_failed">No se pudo guardar el acceso a esta carpeta. Vuelve a elegirla.</string>
+    <string name="backup_hub_folder_hint">Esta será la carpeta de las exportaciones y los archivos guardados.</string>
+    <string name="backup_hub_newest">Más recientes primero</string>
+    <string name="backup_hub_no_matches">Ningún archivo coincide con la búsqueda o el filtro.</string>
+    <string name="backup_hub_saved_archives">Archivos guardados</string>
+    <string name="backup_hub_scan_failed">No se pudieron actualizar los archivos guardados. Vuelve a intentarlo.</string>
+    <string name="backup_hub_search_archives">Buscar archivos guardados</string>
+    <string name="backup_hub_source_unavailable">No se pudo leer %1$s por completo. Es posible que falten archivos en esta lista.</string>
+    <string name="installer_app_lock">Extender el bloqueo al instalador</string>
+    <string name="installer_app_lock_desc">Exigir también autenticación para el instalador portátil y Bolt, y proteger sus capturas y vistas previas en Recientes. Requiere el bloqueo de la aplicación.</string>
+    <string name="installer_lock_include">Incluir instalador</string>
+    <string name="installer_lock_main_only">Solo la aplicación principal</string>
+    <string name="installer_lock_not_saved">No se pudo guardar el ajuste de bloqueo del instalador. Vuelve a intentarlo.</string>
+    <string name="installer_lock_prompt_desc">¿Exigir también autenticación al abrir el instalador portátil o Bolt? Esto protege sus capturas y vistas previas en Recientes. Puedes cambiarlo después en los ajustes de seguridad.</string>
+    <string name="installer_lock_prompt_title">¿Incluir el instalador en el bloqueo?</string>
+    <string name="kernel_refresh_root">Actualizar acceso root</string>
+    <string name="log_jump_latest">Ir a lo más reciente</string>
+    <string name="log_jump_latest_new_output">Nueva salida · Ir a lo más reciente</string>
+</resources>

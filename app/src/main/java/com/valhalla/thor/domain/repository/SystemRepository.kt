@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.gateway.ComponentEnabledState
 import com.valhalla.thor.domain.model.ObbProbe
+import com.valhalla.thor.domain.model.SuspensionChange
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import java.io.File
 
@@ -56,11 +57,14 @@ interface SystemRepository {
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext()
     ): Result<Unit>
 
+    /** Read-only provenance check. Null means ownership cannot be verified. */
+    suspend fun isAppSuspendedByThor(packageName: String): Boolean? = null
+
     suspend fun setAppSuspended(
         packageName: String,
         isSuspended: Boolean,
         execution: PrivilegeExecutionContext = PrivilegeExecutionContext()
-    ): Result<Unit>
+    ): Result<SuspensionChange>
 
     suspend fun setAppRestricted(
         packageName: String,
