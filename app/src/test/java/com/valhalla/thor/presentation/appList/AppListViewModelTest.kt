@@ -222,6 +222,7 @@ class AppListViewModelTest {
             systemAppFilter = AppFilterPreferences(FilterType.Uad, "Recommended"),
         ))
         val normal = viewModel(preferences = prefs)
+        normal.updateListType(AppListType.USER)
         val suspended = viewModel(preferences = prefs)
         suspended.showSuspendedApps()
         normal.loadApps()
@@ -242,12 +243,96 @@ class AppListViewModelTest {
         assertTrue(suspended.uiState.value.displayedApps.isEmpty())
     }
 
+    @Test
+    fun `combined list includes both sources and UAD filters never classify user apps`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("user.notes").copy(bloatRecommendation = "Recommended", isUadLoaded = true),
+            userApp("system.tips").copy(isSystem = true, bloatRecommendation = "Recommended", isUadLoaded = true),
+            userApp("system.unknown").copy(isSystem = true, isUadLoaded = true),
+            userApp("system.pending").copy(isSystem = true, isUadLoaded = false),
+            userApp("system.failed").copy(isSystem = true, isUadLoadFailed = true),
+        )
+        val prefs = FakePreferenceRepository(UserPreferences(animationIntensity = AnimationIntensity.LOW))
+        val vm = viewModel(preferences = prefs)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        prefs.setCombinedAppListsEnabled(true)
+        runCurrent()
+        vm.updateListType(AppListType.ALL)
+        runCurrent()
+        assertEquals(AppListType.ALL, vm.uiState.value.appListType)
+        assertEquals(5, vm.uiState.value.displayedApps.size)
+
+        vm.updateFilterType(FilterType.Uad)
+        runCurrent()
+        vm.updateFilter("Recommended")
+        runCurrent()
+        assertEquals(listOf("system.tips"), vm.uiState.value.displayedApps.map { it.packageName })
+        vm.updateFilter("Unknown")
+        runCurrent()
+        assertEquals(listOf("system.unknown"), vm.uiState.value.displayedApps.map { it.packageName })
+        vm.updateFilter("All")
+        runCurrent()
+        assertEquals(5, vm.uiState.value.displayedApps.size)
+
+        vm.updateSearchQuery("notes")
+        runCurrent()
+        assertEquals(listOf("user.notes"), vm.uiState.value.displayedApps.map { it.packageName })
+        vm.updateSearchQuery("")
+        vm.updateListType(AppListType.USER)
+        runCurrent()
+        assertEquals(FilterType.Source, vm.uiState.value.filterType)
+        assertEquals(listOf("user.notes"), vm.uiState.value.displayedApps.map { it.packageName })
+        vm.updateListType(AppListType.SYSTEM)
+        runCurrent()
+        assertEquals(4, vm.uiState.value.displayedApps.size)
+        assertTrue(vm.uiState.value.displayedApps.all { it.isSystem })
+    }
+
+    @Test
+    fun `combined sources require opt in and disabling preserves independent filters`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(
+            animationIntensity = AnimationIntensity.LOW,
+            userAppFilter = AppFilterPreferences(FilterType.State, "Active"),
+            systemAppFilter = AppFilterPreferences(FilterType.Uad, "Recommended"),
+            combinedAppFilter = AppFilterPreferences(FilterType.State, "Frozen"),
+        ))
+        appRepository.apps.value = listOf(userApp("notes"), userApp("system").copy(isSystem = true))
+        val vm = viewModel(preferences = prefs)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        assertEquals(listOf("notes"), vm.uiState.value.displayedApps.map { it.packageName })
+        vm.updateListType(AppListType.ALL)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        prefs.setCombinedAppListsEnabled(true)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        vm.updateListType(AppListType.ALL)
+        runCurrent()
+        assertEquals("Frozen", vm.uiState.value.selectedFilter)
+        prefs.setCombinedAppListsEnabled(false)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        assertEquals("Active", vm.uiState.value.selectedFilter)
+        assertEquals("Frozen", prefs.userPreferences.first().combinedAppFilter.selectedFilter)
+        vm.updateListType(AppListType.SYSTEM)
+        prefs.setCombinedAppListsEnabled(true)
+        runCurrent()
+        prefs.setCombinedAppListsEnabled(false)
+        runCurrent()
+        assertEquals(AppListType.SYSTEM, vm.uiState.value.appListType)
+        assertEquals("Recommended", vm.uiState.value.selectedFilter)
+    }
+
     // --- Who pays the settle delay ---------------------------------------------------------
 
     @Test
-    fun `tabs and recreated view model restore independent filter profiles`() = runTest {
-        val prefs = FakePreferenceRepository()
+    fun `source selections and recreated view model restore independent filter profiles`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(combinedAppListsEnabled = true))
         val vm = viewModel(preferences = prefs)
+        runCurrent()
+        vm.updateListType(AppListType.ALL)
         runCurrent()
         vm.updateFilterType(FilterType.State)
         runCurrent()
@@ -257,7 +342,7 @@ class AppListViewModelTest {
         vm.updateFilterType(FilterType.Uad)
         runCurrent()
         vm.updateFilter("Recommended")
-        vm.updateListType(AppListType.USER)
+        vm.updateListType(AppListType.ALL)
         runCurrent()
         assertEquals(FilterType.State, vm.uiState.value.filterType)
         assertEquals("Frozen", vm.uiState.value.selectedFilter)
@@ -269,6 +354,9 @@ class AppListViewModelTest {
         val recreated = viewModel(preferences = prefs)
         runCurrent()
         assertEquals(AppListType.USER, recreated.uiState.value.appListType)
+        assertEquals("All", recreated.uiState.value.selectedFilter)
+        recreated.updateListType(AppListType.ALL)
+        runCurrent()
         assertEquals("Frozen", recreated.uiState.value.selectedFilter)
         recreated.updateListType(AppListType.SYSTEM)
         runCurrent()
@@ -403,6 +491,7 @@ class AppListViewModelTest {
         }
         appRepository.apps.value = listOf(userApp("installed"))
         val vm = viewModel(preferences = prefs, permissions = permissions)
+        vm.updateListType(AppListType.USER)
         runCurrent()
         assertTrue(vm.uiState.value.isLoadingPermissions)
         vm.updateListType(AppListType.SYSTEM)

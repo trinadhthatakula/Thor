@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sett_edit">Sett Edit</string>
+    <string name="sett_builtin_desc">Редактирование системных параметров Android и просмотр свойств устройства. Требуется Root или Shizuku.</string>
+    <string name="sett_builtin">Встроено в Thor</string>
+    <string name="sett_open">Открыть</string>
+    <string name="sett_unavailable">Для работы Sett Edit требуется Root или Shizuku. Функция недоступна при выборе Dhizuku.</string>
+    <string name="sett_values">Значения</string>
+    <string name="sett_history">История</string>
+    <string name="sett_system">System</string>
+    <string name="sett_secure">Secure</string>
+    <string name="sett_global">Global</string>
+    <string name="sett_android_properties">Свойства Android</string>
+    <string name="sett_java_properties">Свойства Java</string>
+    <string name="sett_environment">Окружение Linux</string>
+    <string name="sett_shared_scope">Общие параметры для всех пользователей устройства</string>
+    <string name="sett_runtime_scope">Свойства среды выполнения Java в Thor (только для чтения)</string>
+    <string name="sett_environment_scope">Среда окружения процесса Thor (только для чтения)</string>
+    <string name="sett_properties_scope">Свойства Android (только для чтения); видимость зависит от прав доступа и SELinux</string>
+    <string name="sett_user_scope">Пользователь Android %1$d</string>
+    <string name="sett_search">Поиск ключей и значений</string>
+    <string name="sett_add">Добавить параметр</string>
+    <string name="sett_copy">Копировать значение</string>
+    <string name="sett_empty">Подходящие параметры не найдены</string>
+    <string name="sett_before">До</string>
+    <string name="sett_after">После</string>
+    <string name="sett_undo">Отменить</string>
+    <string name="sett_history_note">Последние 100 изменений хранятся только на этом устройстве. Отмена не может устранить все побочные эффекты.</string>
+    <string name="sett_undo_note">Отмена восстанавливает записанное исходное значение только в том случае, если текущее значение всё ещё совпадает с записанным результатом.</string>
+    <string name="sett_verified">Значение сохранено и проверено</string>
+    <string name="sett_rejected">Android не применил запрошенное значение</string>
+    <string name="sett_conflict">Значение изменилось. Обновите данные и проверьте их перед повторной попыткой.</string>
+    <string name="sett_unknown">Результат не подтверждён. Проверьте текущее значение перед повторной попыткой.</string>
+    <string name="sett_error">Не удалось прочитать или обновить параметры. Проверьте права доступа и обновите список.</string>
+    <string name="sett_warning_title">Осознание рисков</string>
+    <string name="sett_warning">"Этот редактор изменяет общие системные таблицы Android: System, Secure и Global. Параметры Global могут повлиять на всех пользователей этого устройства.
+
+Некорректные изменения могут нарушить работу экрана, клавиатуры, специальных возможностей, сети или отладки, вызвать сбои приложений или помешать нормальному запуску Android. Изменяйте только те значения, назначение которых вы понимаете.
+
+Android или производитель устройства могут игнорировать или перезаписывать сохранённые значения. Отмена возвращает записанное значение, но не гарантирует обратимость всех последствий. Для восстановления может потребоваться ADB, режим рекавери или сброс до заводских настроек.
+
+Согласие и история изменений хранятся только на этом устройстве."</string>
+    <string name="sett_consent_failed">Не удалось сохранить согласие. Редактирование остаётся заблокированным.</string>
+    <string name="sett_preview">Просмотр изменения</string>
+    <string name="sett_edit_value">Изменить параметр</string>
+    <string name="sett_key">Ключ</string>
+    <string name="sett_value">Значение</string>
+    <string name="sett_delete">Удалить этот параметр</string>
+    <string name="sett_key_rules">Ключи: буквы, цифры, подчёркивание, точка, двоеточие или дефис; максимум 256 символов. Значения: максимум 65 536 символов.</string>
+    <string name="sett_delete_note">Удаление параметра не восстанавливает его заводское значение по умолчанию.</string>
+    <string name="sett_high_risk">Этот ключ может повлиять на отладку, ввод, специальные возможности или работу экрана. Убедитесь, что у вас есть способ восстановить систему.</string>
+    <string name="sett_risk_accept">Я понимаю риск этого изменения</string>
+    <string name="sett_apply">Применить</string>
+    <string name="sett_absent">Отсутствующий ключ</string>
+    <string name="sett_null">SQL null</string>
+    <string name="sett_empty_value">Пустая строка</string>
+    <string name="sett_back">Назад</string>
+    <string name="sett_answer">Ответ</string>
+    <string name="sett_execution_unconfirmed">Предыдущая операция всё ещё может выполняться. Перезагрузите устройство перед изменением этого параметра.</string>
+    <string name="sett_check_current_value">Проверить текущее значение</string>
+    <string name="sett_observed_value">Текущее наблюдаемое значение</string>
+    <string name="sett_observation_source">Проверено через %1$s · %2$s</string>
+    <string name="sett_observation_note">Текущее значение не подтверждает, что предыдущее изменение завершилось.</string>
+</resources>

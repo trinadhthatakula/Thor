@@ -1,0 +1,7 @@
+• 🌍 Thor now speaks Russian! Select Русский in the app or your device's app language settings.
+
+• 🧭 Floating navigation with icons is now the default. Turn labels on in Settings → Customization → Navigation bar.
+
+• 🎨 Docked navigation now blends into the system navigation area for a more seamless look.
+
+• ✨ Russian app operation labels and suspended app dialogs are more consistent.

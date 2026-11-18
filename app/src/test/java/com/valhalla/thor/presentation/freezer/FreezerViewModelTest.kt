@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
@@ -168,6 +169,53 @@ class FreezerViewModelTest {
     /** The single message the run reported — a removal that says two things has already failed. */
     private fun List<FreezerEvent>.onlyToast(): UiText =
         (single() as FreezerEvent.ShowToast).message
+
+    @Test
+    fun `opted in mixed freezer list includes both sources and clears hidden selections`() = runTest {
+        val imported = listOf(userApp("user.notes", enabled = false)) +
+            (1..4).map { userApp("system.$it", enabled = false).copy(isSystem = true) }
+        appRepository.apps.value = imported
+        imported.forEach { freezer.add(it.packageName) }
+        prefs.setCombinedAppListsEnabled(true)
+        val vm = viewModel()
+        runCurrent()
+        vm.updateListType(AppListType.ALL)
+        assertEquals(AppListType.ALL, vm.uiState.value.appListType)
+        assertEquals(5, vm.uiState.value.freezerApps.filter(vm.uiState.value.appListType::includes).size)
+        vm.selectAll(imported.map { it.packageName })
+        vm.updateListType(AppListType.USER)
+        assertTrue(vm.uiState.value.multiSelection.isEmpty())
+        assertEquals(listOf("user.notes"), vm.uiState.value.freezerApps
+            .filter(vm.uiState.value.appListType::includes).map { it.packageName })
+        vm.updateListType(AppListType.ALL)
+        assertEquals(5, vm.uiState.value.freezerApps.filter(vm.uiState.value.appListType::includes).size)
+    }
+
+    @Test
+    fun `combined freezer sources are opt in and disabling clears hidden selection`() = runTest {
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        vm.updateListType(AppListType.ALL)
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        prefs.setCombinedAppListsEnabled(true)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        vm.updateListType(AppListType.ALL)
+        vm.selectAll(listOf("user", "system"))
+        prefs.setCombinedAppListsEnabled(false)
+        runCurrent()
+        assertEquals(AppListType.USER, vm.uiState.value.appListType)
+        assertTrue(vm.uiState.value.multiSelection.isEmpty())
+        vm.updateListType(AppListType.SYSTEM)
+        vm.selectAll(listOf("system"))
+        prefs.setCombinedAppListsEnabled(true)
+        runCurrent()
+        prefs.setCombinedAppListsEnabled(false)
+        runCurrent()
+        assertEquals(AppListType.SYSTEM, vm.uiState.value.appListType)
+        assertEquals(setOf("system"), vm.uiState.value.multiSelection)
+    }
 
     @Test fun `verified freeze is tracked even when suspension ownership is unknown`() = runTest {
         appRepository.apps.value = listOf(userApp("a"))

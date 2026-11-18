@@ -1,0 +1,11 @@
+• 🧭 Make navigation yours: preview floating or docked styles, icons and labels.
+
+• 🌍 Use Thor in Russian.
+
+• ⚡ Flash supported AnyKernel3 packages with Bolt (root required).
+
+• ❄️ Toggle your Freezer watchlist from Quick Settings, with better handling of apps paused elsewhere.
+
+• 📱 Browse user and system apps together, and search or sort backups.
+
+• 🔐 Extend your app lock to the installer and read logs at your own pace.

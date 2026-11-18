@@ -9,6 +9,8 @@ import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.MultiAppActionId
 import com.valhalla.thor.domain.model.MultiAppActionLayout
+import com.valhalla.thor.domain.model.NavigationBarPreferences
+import com.valhalla.thor.domain.model.NavigationPlacement
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
@@ -363,6 +365,30 @@ class SettingsViewModelTest {
 
         assertEquals(initial, vm.uiState.value.prefs)
         assertTrue(preferences.writeFailureLatched)
+    }
+
+    /** Apply must report disk failure without replacing the saved style or unrelated preferences. */
+    @Test
+    fun `navigation apply reports the write outcome and preserves settings when writing fails`() = runTest {
+        val initial = UserPreferences(themeMode = ThemeMode.DARK)
+        val draft = NavigationBarPreferences(placement = NavigationPlacement.FLOATING, spacing = 99)
+        for (writesFail in listOf(false, true)) {
+            val preferences = FakePreferenceRepository(initial, writesFail = writesFail)
+            val vm = viewModel(
+                freezer = FakeFreezerRepository(),
+                preferences = preferences,
+                controller = FakePrivilegeSweepController(),
+                candidates = emptyMap(),
+                targets = TaskNavigationTargets(ProvisionalTaskIdentityRegistry()),
+            )
+
+            assertEquals(!writesFail, vm.applyNavigationBarPreferences(draft))
+            assertEquals(
+                if (writesFail) initial else initial.copy(navigationBar = draft.normalized()),
+                preferences.userPreferences.first(),
+            )
+            assertEquals(writesFail, preferences.writeFailureLatched)
+        }
     }
 
     private fun viewModel(

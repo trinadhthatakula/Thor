@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.DefaultTab
+import com.valhalla.thor.domain.model.NavigationBarPreferences
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezerMode
@@ -68,6 +69,8 @@ interface PreferenceRepository {
     fun acknowledgeSettingsWriteFailure()
 
     // --- App List ---
+    /** Enables combined source selection without replacing any saved filter profile. */
+    suspend fun setCombinedAppListsEnabled(enabled: Boolean)
     suspend fun updateAppSort(sortBy: SortBy)
     suspend fun updateAppSortOrder(sortOrder: SortOrder)
     suspend fun updateAppFilter(
@@ -79,6 +82,8 @@ interface PreferenceRepository {
 
     // --- Navigation ---
     suspend fun setDefaultTab(tab: DefaultTab)
+    /** Atomically saves the whole style; false leaves the draft open for retry. */
+    suspend fun setNavigationBarPreferences(preferences: NavigationBarPreferences): Boolean
 
     // --- Home tiles ---
     suspend fun setInstallerTileVisibility(isVisible: Boolean)
