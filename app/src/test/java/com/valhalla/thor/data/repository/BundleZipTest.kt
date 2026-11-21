@@ -13,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.zip.CRC32
@@ -473,6 +474,33 @@ class BundleZipTest {
 
         assertTrue(BundleZip.extractEntryTo(zip, "base.apk", dest, maxBytes = 4096L).not())
         assertTrue("partial output left behind", dest.exists().not())
+    }
+
+    @Test
+    fun bundleZip_extractEntries_preservesExistingStagingFilesAndRollsBackNewOnes() {
+        val zip = writeStoredDataDescriptorZip(
+            listOf("base.apk" to byteArrayOf(1), "split.apk" to byteArrayOf(2))
+        )
+        val outDir = tempDir()
+        val existing = File(outDir, "split.apk").apply { writeBytes(byteArrayOf(3)) }
+
+        assertThrows(InstallRefusedException::class.java) {
+            BundleZip.extractEntries(zip, listOf("base.apk", "split.apk"), outDir)
+        }
+        assertArrayEquals(byteArrayOf(3), existing.readBytes())
+        assertEquals(listOf("split.apk"), outDir.list()?.toList())
+    }
+
+    @Test
+    fun bundleZip_extractEntries_rollsBackIfTheNextOutputCannotBeOpened() {
+        val tooLong = "a".repeat(4096) + ".apk"
+        val zip = writeStoredDataDescriptorZip(listOf("base.apk" to byteArrayOf(1), tooLong to byteArrayOf(2)))
+        val outDir = tempDir()
+
+        assertThrows(IOException::class.java) {
+            BundleZip.extractEntries(zip, listOf("base.apk", tooLong), outDir)
+        }
+        assertTrue(outDir.list().orEmpty().isEmpty())
     }
 
     @Test

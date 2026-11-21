@@ -39,7 +39,7 @@ class PromptAuthenticatorsTest {
     }
 
     /**
-     * Android 10 *can* take a credential, via the deprecated `setDeviceCredentialAllowed`, but
+     * Android 10 *can* take a credential, via the system credential confirmation activity, but
      * androidx `AuthenticatorUtils.isSupportedCombination` rejects `BIOMETRIC_STRONG or
      * DEVICE_CREDENTIAL` below R. `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` is supported at every
      * level, so it is how the same question gets asked there.

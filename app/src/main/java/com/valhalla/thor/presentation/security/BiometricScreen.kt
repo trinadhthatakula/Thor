@@ -34,7 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -68,8 +69,8 @@ fun BiometricScreen(
     onRetry: () -> Unit,
     onExit: () -> Unit
 ) {
-    val context = LocalContext.current
-    val handler = remember { BiometricPromptHandler(context) }
+    val activity = LocalActivity.current as ComponentActivity
+    val handler = remember(activity) { BiometricPromptHandler(activity) }
 
     // Clean up on dispose
     androidx.compose.runtime.DisposableEffect(handler) {
