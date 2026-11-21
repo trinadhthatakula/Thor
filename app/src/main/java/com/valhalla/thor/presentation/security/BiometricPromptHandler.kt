@@ -62,7 +62,7 @@ internal class BiometricPromptHandler(private val activity: ComponentActivity) {
     private suspend fun verifyUser(title: String, subtitle: String): Boolean {
         val legacyQ = Build.VERSION.SDK_INT == Build.VERSION_CODES.Q
         val manager = BiometricManager.from(activity)
-        if (!legacyQ || manager.canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
+        if (!legacyQ || manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
             val operation = try {
                 withContext(Dispatchers.IO) { AppLockKey.biometricOperation() }
             } catch (e: GeneralSecurityException) {
@@ -100,7 +100,7 @@ internal class BiometricPromptHandler(private val activity: ComponentActivity) {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
                     builder.setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
                 legacyQ -> {
-                    val label = BiometricManager.from(activity).getStrings(DEVICE_CREDENTIAL)?.buttonLabel ?: title
+                    val label = BiometricManager.from(activity).getStrings(BiometricManager.Authenticators.DEVICE_CREDENTIAL)?.buttonLabel ?: title
                     builder.setNegativeButton(label, executor) { _, _ -> if (pending.isActive) pending.resume(null) }
                 }
                 else -> builder.setNegativeButton(activity.getText(android.R.string.cancel), executor) { _, _ ->

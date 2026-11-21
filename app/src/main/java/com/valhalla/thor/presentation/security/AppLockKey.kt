@@ -50,7 +50,7 @@ internal class AppLockKey(private val privateKey: PrivateKey, publicKey: PublicK
             get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) "thor.app-lock.combined" else "thor.app-lock.biometric"
 
         @Synchronized
-        private fun discard(alias: String) {
+        internal fun discard(alias: String) {
             KeyStore.getInstance(STORE).apply {
                 load(null)
                 deleteEntry(alias)
