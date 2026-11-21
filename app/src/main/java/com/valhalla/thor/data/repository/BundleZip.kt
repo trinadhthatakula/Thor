@@ -374,66 +374,64 @@ object BundleZip {
         val seen = HashSet<String>()
         val out = mutableListOf<ExtractedApk>()
         var remaining = maxTotalBytes
-        fun refuse(message: String): Nothing {
-            out.forEach { it.file.delete() }
-            throw InstallRefusedException(message)
-        }
-        ZipFile(zip).use { zf ->
-            val entries = zf.entries().asSequence().filter { !it.isDirectory }.toList()
-            validateBundleEntryNames(entries.map { it.name })
-            for (entry in entries) {
-                val base = entry.name.substringAfterLast('/')
-                val key = base.lowercase()
-                // Wantedness first, so an unsafe name nobody asked for is skipped in silence
-                // (archives carry all sorts of junk) while an unsafe name that IS in the install
-                // set is a refusal — that one cannot be dropped, because the identity was drawn
-                // from the same list.
-                if (key !in wantedKeys) continue
-                if (!isSafeEntryFileName(base)) {
-                    refuse("\"$base\" is not a usable file name; refusing to install this archive.")
-                }
-                if (!seen.add(key)) continue
-                val dest = stagingDir.resolve(base).normalize()
-                if (!dest.startsWith(stagingDir) || dest.parent != stagingDir) {
-                    refuse("The selected APK is outside the staging directory.")
-                }
-                val digest = MessageDigest.getInstance("SHA-256")
-                val output = try {
-                    // CREATE_NEW atomically refuses an existing file, including a symbolic link.
-                    Files.newOutputStream(dest, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
-                } catch (_: FileAlreadyExistsException) {
-                    refuse("The selected APK already exists in the staging directory.")
-                }
-                val copied = try {
-                    output.use { stream ->
+        // An output belongs to this attempt only after CREATE_NEW succeeds. Track even the
+        // file still being copied so open, read, write and close failures roll back the set.
+        val created = mutableListOf<File>()
+        try {
+            ZipFile(zip).use { zf ->
+                val entries = zf.entries().asSequence().filter { !it.isDirectory }.toList()
+                validateBundleEntryNames(entries.map { it.name })
+                for (entry in entries) {
+                    val base = entry.name.substringAfterLast('/')
+                    val key = base.lowercase()
+                    // Wantedness first, so an unsafe name nobody asked for is skipped in silence
+                    // (archives carry all sorts of junk) while an unsafe name that IS in the install
+                    // set is a refusal — that one cannot be dropped, because the identity was drawn
+                    // from the same list.
+                    if (key !in wantedKeys) continue
+                    if (!isSafeEntryFileName(base)) {
+                        throw InstallRefusedException("\"$base\" is not a usable file name; refusing to install this archive.")
+                    }
+                    if (!seen.add(key)) continue
+                    val dest = stagingDir.resolve(base).normalize()
+                    if (!dest.startsWith(stagingDir) || dest.parent != stagingDir) {
+                        throw InstallRefusedException("The selected APK is outside the staging directory.")
+                    }
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    val output = try {
+                        // CREATE_NEW atomically refuses an existing file, including a symbolic link.
+                        Files.newOutputStream(dest, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+                    } catch (_: FileAlreadyExistsException) {
+                        throw InstallRefusedException("The selected APK already exists in the staging directory.")
+                    }
+                    val copied = output.use { stream ->
+                        created.add(dest.toFile())
                         zf.getInputStream(entry).use { it.copyAtMostTo(stream, remaining, digest) }
                     }
-                } catch (e: IOException) {
-                    dest.toFile().delete()
-                    out.forEach { it.file.delete() }
-                    throw e
+                    if (copied == null) {
+                        throw InstallRefusedException(
+                            "\"$base\" expands past the ${maxTotalBytes / (1024 * 1024)} MB " +
+                                "extraction budget; refusing to install this archive."
+                        )
+                    }
+                    remaining -= copied
+                    out.add(ExtractedApk(dest.toFile(), digest.digest().toLowercaseHex()))
                 }
-                if (copied == null) {
-                    dest.toFile().delete()
-                    refuse(
-                        "\"$base\" expands past the ${maxTotalBytes / (1024 * 1024)} MB " +
-                            "extraction budget; refusing to install this archive."
-                    )
-                }
-                remaining -= copied
-                out.add(ExtractedApk(dest.toFile(), digest.digest().toLowercaseHex()))
             }
+            // Compared against the lowercased set, not [wantedBaseNames]: two wanted names differing
+            // only in case are one file here, and counting the caller's set would refuse a set that
+            // was in fact extracted whole.
+            if (seen.size != wantedKeys.size) {
+                throw InstallRefusedException(
+                    "this archive does not contain ${(wantedKeys - seen).sorted().joinToString(", ")}; " +
+                        "refusing to install a partial set."
+                )
+            }
+            return out
+        } catch (e: Exception) {
+            created.forEach { it.delete() }
+            throw e
         }
-        // Compared against the lowercased set, not [wantedBaseNames]: two wanted names differing
-        // only in case are one file here, and counting the caller's set would refuse a set that
-        // was in fact extracted whole.
-        if (seen.size != wantedKeys.size) {
-            refuse(
-                "this archive does not contain ${(wantedKeys - seen).sorted().joinToString(", ")}; " +
-                    "refusing to install a partial set."
-            )
-        }
-        return out
     }
 }
 
