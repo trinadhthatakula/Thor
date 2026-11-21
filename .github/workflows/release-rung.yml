@@ -302,13 +302,13 @@ jobs:
       # per rung, three rungs per version. If that becomes the bottleneck, the
       # thing to restore is the Gradle cache — the gems are seconds.
       - name: Setup JDK 21
-        uses: actions/setup-java@v6.2.0
+        uses: actions/setup-java@v6.3.0
         with:
           distribution: 'zulu'
           java-version: '21'
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1
+        uses: ruby/setup-ruby@20eb24b0d509e2b9ed9b6d42ddfeb992915e0564 # v1
         with:
           ruby-version: '3.3'
           bundler-cache: false
@@ -572,7 +572,7 @@ jobs:
       # with empty outputs and cut a tagless, assetless release.
       - name: Create GitHub Release
         if: ${{ !cancelled() && steps.gate.outputs.publish == 'true' && steps.prep_notes.outcome == 'success' }}
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: v${{ steps.prep_notes.outputs.version_name }}${{ inputs.tag_suffix }}
           target_commitish: ${{ github.sha }}
