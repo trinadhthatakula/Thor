@@ -8,6 +8,9 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.zip.ZipFile
 
@@ -366,6 +369,7 @@ object BundleZip {
             throw InstallRefusedException("the selected install set contains duplicate APK entries.")
         }
         outDir.mkdirs()
+        val stagingDir = outDir.canonicalFile.toPath()
         val wantedKeys = wanted.toHashSet()
         val seen = HashSet<String>()
         val out = mutableListOf<ExtractedApk>()
@@ -389,22 +393,35 @@ object BundleZip {
                     refuse("\"$base\" is not a usable file name; refusing to install this archive.")
                 }
                 if (!seen.add(key)) continue
-                val dest = File(outDir, base)
+                val dest = stagingDir.resolve(base).normalize()
+                if (!dest.startsWith(stagingDir) || dest.parent != stagingDir) {
+                    refuse("The selected APK is outside the staging directory.")
+                }
                 val digest = MessageDigest.getInstance("SHA-256")
-                val copied = zf.getInputStream(entry).use { input ->
-                    dest.outputStream().use { output ->
-                        input.copyAtMostTo(output, remaining, digest)
+                val output = try {
+                    // CREATE_NEW atomically refuses an existing file, including a symbolic link.
+                    Files.newOutputStream(dest, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+                } catch (_: FileAlreadyExistsException) {
+                    refuse("The selected APK already exists in the staging directory.")
+                }
+                val copied = try {
+                    output.use { stream ->
+                        zf.getInputStream(entry).use { it.copyAtMostTo(stream, remaining, digest) }
                     }
+                } catch (e: IOException) {
+                    dest.toFile().delete()
+                    out.forEach { it.file.delete() }
+                    throw e
                 }
                 if (copied == null) {
-                    dest.delete()
+                    dest.toFile().delete()
                     refuse(
                         "\"$base\" expands past the ${maxTotalBytes / (1024 * 1024)} MB " +
                             "extraction budget; refusing to install this archive."
                     )
                 }
                 remaining -= copied
-                out.add(ExtractedApk(dest, digest.digest().toLowercaseHex()))
+                out.add(ExtractedApk(dest.toFile(), digest.digest().toLowercaseHex()))
             }
         }
         // Compared against the lowercased set, not [wantedBaseNames]: two wanted names differing

@@ -45,9 +45,8 @@ class BiometricHelper(private val context: Context) : AuthCapability {
  * - **API 29** — the same *question* is not askable: androidx's
  *   `AuthenticatorUtils.isSupportedCombination` rejects `BIOMETRIC_STRONG or DEVICE_CREDENTIAL`
  *   below R, so `canAuthenticate` answers `BIOMETRIC_ERROR_UNSUPPORTED` without consulting the
- *   device. `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` is supported at every level and is what the
- *   Android 10 prompt actually accepts, since it is built with the deprecated
- *   `setDeviceCredentialAllowed(true)`. The `WEAK`/`STRONG` difference cannot make this
+ *   device. `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` is supported at every level and covers Thor’s
+ *   Android 10 system credential fallback when a strong biometric is unavailable. The `WEAK`/`STRONG` difference cannot make this
  *   over-permissive in practice: Android will not let a biometric be enrolled without a backup
  *   credential, so "a credential is set" is implied by every enrolled biometric anyway.
  * - **API 28** — Android 9's framework prompt has no device-credential path at all (

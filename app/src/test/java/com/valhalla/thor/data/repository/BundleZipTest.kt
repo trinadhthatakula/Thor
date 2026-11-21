@@ -476,6 +476,21 @@ class BundleZipTest {
     }
 
     @Test
+    fun bundleZip_extractEntries_preservesExistingStagingFilesAndRollsBackNewOnes() {
+        val zip = writeStoredDataDescriptorZip(
+            listOf("base.apk" to byteArrayOf(1), "split.apk" to byteArrayOf(2))
+        )
+        val outDir = tempDir()
+        val existing = File(outDir, "split.apk").apply { writeBytes(byteArrayOf(3)) }
+
+        assertThrows(InstallRefusedException::class.java) {
+            BundleZip.extractEntries(zip, listOf("base.apk", "split.apk"), outDir)
+        }
+        assertArrayEquals(byteArrayOf(3), existing.readBytes())
+        assertEquals(listOf("split.apk"), outDir.list()?.toList())
+    }
+
+    @Test
     fun bundleZip_extractEntries_refusesAnEntryWhoseBaseNameIsAPathComponent() {
         // `java.io.File` does not normalise `..`; the syscall does. `substringAfterLast('/')`
         // strips directories but leaves `..` intact, so "payload/.." arrives as the base name

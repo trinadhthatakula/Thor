@@ -11,6 +11,7 @@ on:
   # defaults are restated rather than extended.
   pull_request:
     types: [ opened, synchronize, reopened, edited ]
+  workflow_dispatch:
   schedule:
     - cron: '27 3 * * 1' # weekly, Monday 03:27 UTC
 
@@ -32,35 +33,38 @@ jobs:
       matrix:
         include:
           - language: java-kotlin
-            build-mode: none
-
-          # web/ is a brand-new JavaScript/TypeScript surface — the repo's first —
-          # and until this entry existed it had no security analysis at all.
-          #
-          # `paths` is scoped to web because that is where every tracked .ts/.mjs
-          # file lives; an unscoped JS analysis would spend its time on whatever
-          # tooling JSON happens to be checked in. Note the coverage limit this
-          # buys and does not remove: the CodeQL JS extractor does not understand
-          # .astro, so components are analysed only through the .ts they import.
-          #
-          # `paths`/`paths-ignore` apply to interpreted languages only, which is
-          # exactly why the java-kotlin entry above carries no config — there it
-          # would be silently ignored rather than rejected.
+            build-mode: manual
           - language: javascript-typescript
             build-mode: none
-            config: |
-              paths:
-                - web
+          - language: actions
+            build-mode: none
+          - language: python
+            build-mode: none
+          - language: ruby
+            build-mode: none
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v6.3.0
+        with:
+          distribution: zulu
+          java-version: '21'
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.39.3
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          config: ${{ matrix.config }}
+
+      # Kotlin extraction requires a compiler invocation after CodeQL initialization.
+      - name: Compile Android sources for both flavors
+        if: matrix.language == 'java-kotlin'
+        run: >-
+          ./gradlew --no-daemon --no-build-cache -Pkotlin.compiler.execution.strategy=in-process
+          :app:compileFossDebugJavaWithJavac :app:compileStoreReleaseJavaWithJavac
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4.39.3

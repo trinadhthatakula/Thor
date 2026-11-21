@@ -3,23 +3,40 @@
 
 package com.valhalla.thor.presentation.security
 
-import android.content.Context
+import android.app.Activity
+import android.app.KeyguardManager
+import android.content.Intent
 import android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.CancellationSignal
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.biometric.BiometricManager
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.R
+import java.security.GeneralSecurityException
+import java.security.Signature
+import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 /**
  * Handles biometric authentication using the framework BiometricPrompt API (API 28+).
  * This implementation does NOT require FragmentActivity, making it compatible with ComponentActivity.
  */
-internal class BiometricPromptHandler(private val context: Context) {
-
-    private var cancellationSignal: CancellationSignal? = null
+internal class BiometricPromptHandler(private val activity: ComponentActivity) {
+    private var authentication: Job? = null
 
     fun authenticate(
         title: String,
@@ -27,89 +44,127 @@ internal class BiometricPromptHandler(private val context: Context) {
         onAuthenticated: () -> Unit,
         onError: (String) -> Unit
     ) {
-        // Cancel any in-flight prompt before starting a new one so the previous
-        // CancellationSignal (and its captured callbacks) isn't orphaned.
-        cancellationSignal?.cancel()
-
-        val executor = ContextCompat.getMainExecutor(context)
-
-        // Capture this prompt's own signal so a stale callback from a superseded prompt
-        // can't null out a newer in-flight prompt's signal (which would orphan it — cancel()
-        // and the next authenticate() could no longer cancel it).
-        val signal = CancellationSignal()
-
-        val callback = object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
-                super.onAuthenticationSucceeded(result)
-                if (cancellationSignal === signal) cancellationSignal = null
-                onAuthenticated()
+        if (authentication?.isActive == true) return
+        authentication = activity.lifecycleScope.launch {
+            try {
+                val verified = verifyUser(title, subtitle)
+                if (verified) onAuthenticated() else onError(activity.getString(R.string.auth_failed))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PromptError) {
+                onError(e.message ?: activity.getString(R.string.auth_failed))
+            } catch (_: Exception) {
+                onError(activity.getString(R.string.auth_failed))
             }
+        }
+    }
 
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                super.onAuthenticationError(errorCode, errString)
-                if (cancellationSignal === signal) cancellationSignal = null
-                // Error code 5 is developer-initiated cancellation, ignore it.
-                if (errorCode != 5) {
-                    onError(errString?.toString() ?: "Authentication error")
+    private suspend fun verifyUser(title: String, subtitle: String): Boolean {
+        val legacyQ = Build.VERSION.SDK_INT == Build.VERSION_CODES.Q
+        val manager = BiometricManager.from(activity)
+        if (!legacyQ || manager.canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
+            val operation = try {
+                withContext(Dispatchers.IO) { AppLockKey.biometricOperation() }
+            } catch (e: GeneralSecurityException) {
+                if (!legacyQ) throw e
+                null // A Q device can still confirm its screen lock.
+            }
+            if (operation != null) {
+                val (challenge, signer) = operation
+                val authorized = promptForSignature(title, subtitle, signer)
+                if (authorized != null) {
+                    return authorized === signer && withContext(Dispatchers.IO) { challenge.verifyWith(authorized) }
                 }
             }
+        }
+        if (!legacyQ) return false
 
-            override fun onAuthenticationFailed() {
-                super.onAuthenticationFailed()
-                // Framework handles internal retries; we could notify UI if needed.
+        // Q rejects a CryptoObject combined with device credentials. Capture the challenge
+        // before opening the system credential activity and sign only after its own RESULT_OK.
+        val key = withContext(Dispatchers.IO) { AppLockKey.openCredentialKey() }
+        if (!confirmCredential(title, subtitle)) return false
+        return withContext(Dispatchers.IO) { key.verifyCredential() }
+    }
+
+    /** A null result requests the Android 10 screen-lock fallback. */
+    private suspend fun promptForSignature(title: String, subtitle: String, signer: Signature): Signature? =
+        suspendCancellableCoroutine { pending ->
+            val executor = ContextCompat.getMainExecutor(activity)
+            val signal = CancellationSignal()
+            val builder = BiometricPrompt.Builder(activity).setTitle(title).setSubtitle(subtitle)
+            fun fail(message: CharSequence?) {
+                if (pending.isActive) pending.resumeWithException(PromptError(message?.toString()))
             }
+            val legacyQ = Build.VERSION.SDK_INT == Build.VERSION_CODES.Q
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                    builder.setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+                legacyQ -> {
+                    val label = BiometricManager.from(activity).getStrings(DEVICE_CREDENTIAL)?.buttonLabel ?: title
+                    builder.setNegativeButton(label, executor) { _, _ -> if (pending.isActive) pending.resume(null) }
+                }
+                else -> builder.setNegativeButton(activity.getText(android.R.string.cancel), executor) { _, _ ->
+                    fail(null)
+                }
+            }
+            pending.invokeOnCancellation { signal.cancel() }
+            builder.build().authenticate(
+                BiometricPrompt.CryptoObject(signer), signal, executor,
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+                        if (!pending.isActive) return
+                        val authorized = result?.cryptoObject?.signature
+                        if (authorized == null) fail(null) else pending.resume(authorized)
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                        if (!pending.isActive) return
+                        val canUseCredential = when (errorCode) {
+                            BiometricPrompt.BIOMETRIC_ERROR_HW_UNAVAILABLE,
+                            BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT,
+                            BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT_PERMANENT,
+                            BiometricPrompt.BIOMETRIC_ERROR_NO_BIOMETRICS -> legacyQ
+                            else -> false
+                        }
+                        if (canUseCredential) pending.resume(null) else fail(errString)
+                    }
+                }
+            )
         }
 
-        val builder = BiometricPrompt.Builder(context)
-            .setTitle(title)
-            .setSubtitle(subtitle)
-
-        when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
-                builder.setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
-
-            // Android 10 has no setAllowedAuthenticators, but it does have the flag that became
-            // DEVICE_CREDENTIAL — and the app lock needs it, because without it a device whose
-            // only unlock is a PIN can never satisfy the prompt. Deprecated on purpose: it is the
-            // only device-credential path Q offers, and R+ takes the branch above.
-            //
-            // Mutually exclusive with setNegativeButton (the framework throws), which is why this
-            // is a `when` and not two independent `if`s. The system prompt supplies its own
-            // "Use PIN" affordance and Back still dismisses, so nothing is lost.
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
-                @Suppress("DEPRECATION")
-                builder.setDeviceCredentialAllowed(true)
-
-            // Android 9's prompt is biometric-only: setDeviceCredentialAllowed arrives in Q, so
-            // there is nothing here to accept a screen lock with. `promptAuthenticators` asks
-            // BiometricManager the matching biometric-only question, and the unavailable screen
-            // tells a P user to enrol rather than to set a screen lock that would not help.
-            else -> builder.setNegativeButton("Cancel", executor) { _, _ ->
-                onError("User cancelled")
+    @Suppress("DEPRECATION") // API 29 device credentials cannot authorize a per-use biometric key.
+    private suspend fun confirmCredential(title: String, subtitle: String): Boolean {
+        val intent = activity.getSystemService(KeyguardManager::class.java)
+            .createConfirmDeviceCredentialIntent(title, subtitle) ?: return false
+        var launcher: ActivityResultLauncher<Intent>? = null
+        try {
+            return suspendCancellableCoroutine { pending ->
+                launcher = activity.activityResultRegistry.register(
+                    "thor-app-lock-" + UUID.randomUUID(), ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (pending.isActive) pending.resume(result.resultCode == Activity.RESULT_OK)
+                }
+                launcher.launch(intent)
             }
+        } finally {
+            launcher?.unregister()
         }
-
-        cancellationSignal = signal
-        builder.build().authenticate(signal, executor, callback)
     }
 
     fun cancel() {
-        cancellationSignal?.cancel()
-        cancellationSignal = null
+        authentication?.cancel()
+        authentication = null
     }
+
+    private class PromptError(message: String?) : Exception(message)
 }
 
 /**
  * Whether the prompt [BiometricPromptHandler] builds on [sdkInt] can be satisfied by the device
  * credential — a PIN, pattern or password — as opposed to a biometric only.
  *
- * True from Q up: R+ passes `DEVICE_CREDENTIAL` to `setAllowedAuthenticators`, Q sets the
- * deprecated `setDeviceCredentialAllowed`. False on P, whose framework prompt has neither.
- *
- * The version literal is repeated inside [BiometricPromptHandler.authenticate] rather than read
- * from here, because lint's `NewApi` only recognises a direct `SDK_INT` comparison as a guard for
- * an API-29 call. `PromptAuthenticatorsTest` pins this against `promptAuthenticators` so the two
- * halves — what the prompt accepts and what capability asks about — cannot drift apart silently.
+ * R+ allows the credential in the crypto prompt. Q uses the system credential activity.
+ * Android 9 supports biometric authentication only.
  *
  * Read by [BiometricUnavailableScreen], which must not tell an Android 9 user that setting a
  * screen lock will get them in.
