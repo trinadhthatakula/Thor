@@ -171,11 +171,13 @@ internal fun InputStream.readAtMost(limit: Long): ByteArray? {
 internal fun InputStream.copyAtMostTo(
     out: OutputStream,
     limit: Long,
-    digest: MessageDigest? = null
+    digest: MessageDigest? = null,
+    checkActive: (() -> Unit)? = null,
 ): Long? {
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     var total = 0L
     while (true) {
+        checkActive?.invoke()
         val read = read(buffer)
         if (read == -1) break
         total += read
@@ -312,7 +314,8 @@ object BundleZip {
         zip: File,
         baseName: String,
         dest: File,
-        maxBytes: Long = MAX_EXTRACTED_TOTAL_BYTES
+        maxBytes: Long = MAX_EXTRACTED_TOTAL_BYTES,
+        checkActive: (() -> Unit)? = null,
     ): Boolean {
         if (!isSafeEntryFileName(baseName)) return false
         return ZipFile(zip).use { zf ->
@@ -321,8 +324,12 @@ object BundleZip {
             val entry = entries.firstOrNull {
                 it.name.substringAfterLast('/').equals(baseName, ignoreCase = true)
             } ?: return false
+            if (entry.size > maxBytes) {
+                dest.delete()
+                return false
+            }
             val copied = zf.getInputStream(entry).use { input ->
-                dest.outputStream().use { output -> input.copyAtMostTo(output, maxBytes) }
+                dest.outputStream().use { output -> input.copyAtMostTo(output, maxBytes, checkActive = checkActive) }
             }
             if (copied == null) {
                 dest.delete()

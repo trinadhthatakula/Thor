@@ -30,18 +30,7 @@ class ArchiveBundleVerifierImpl(
     ): ArchiveBundleVerification = withContext(ioDispatcher) {
         val scratch = File(context.cacheDir, "archive-verify-${UUID.randomUUID()}")
         try {
-            val contents = BundleZip.read(bundle, setOf("manifest.json", "info.json"))
-            val manifest = contents.bytes["manifest.json"]?.let { parseXapkManifest(String(it)) }
-            val apkm = contents.bytes["info.json"]?.let { parseApkmInfo(String(it)) }
-            val packageHint = manifest?.packageName?.takeIf { it.isNotBlank() }
-                ?: apkm?.packageName?.takeIf { it.isNotBlank() }
-            val plan = resolveBundlePlan(
-                contents.entryNames,
-                manifest?.splitApkFiles(),
-                manifest?.baseApkFile(),
-                packageHint,
-                requireCompleteManifest = manifest != null,
-            )
+            val plan = archiveBundlePlan(bundle)
             if (plan.installSet.isEmpty()) return@withContext ArchiveBundleVerification.Refused
 
             scratch.mkdirs()
@@ -75,4 +64,19 @@ class ArchiveBundleVerifierImpl(
             scratch.deleteRecursively()
         }
     }
+}
+
+internal fun archiveBundlePlan(bundle: File): BundleInstallPlan {
+    val contents = BundleZip.read(bundle, setOf("manifest.json", "info.json"))
+    val manifest = contents.bytes["manifest.json"]?.let { parseXapkManifest(String(it)) }
+    val apkm = contents.bytes["info.json"]?.let { parseApkmInfo(String(it)) }
+    val packageHint = manifest?.packageName?.takeIf { it.isNotBlank() }
+        ?: apkm?.packageName?.takeIf { it.isNotBlank() }
+    return resolveBundlePlan(
+        contents.entryNames,
+        manifest?.splitApkFiles(),
+        manifest?.baseApkFile(),
+        packageHint,
+        requireCompleteManifest = manifest != null,
+    )
 }

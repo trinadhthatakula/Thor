@@ -448,6 +448,7 @@
     <string name="info_obb_none">Нет игровых данных</string>
     <string name="info_obb_unknown">Сейчас невозможно проверить</string>
     <string name="info_shared_data_dir">Каталог общих данных</string>
+    <string name="info_base_apk_sha256">SHA-256 базового APK</string>
     <string name="info_signature_sha256">Отпечаток подписи SHA-256</string>
     <string name="info_bloat_description">Причина отметки</string>
     <string name="no_permissions_found">Разрешения не найдены</string>

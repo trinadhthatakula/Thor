@@ -41,6 +41,7 @@ import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
 import com.valhalla.thor.domain.repository.ArchiveSource
+import com.valhalla.thor.domain.repository.ArchiveFingerprintReader
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.ThorJobStatus
@@ -503,6 +504,7 @@ class ArchiveRestoreViewModelTest {
     ) = ArchiveRestoreViewModel(
         sources = sources,
         openArchive = OpenArchiveUseCase(cipher, dispatcher),
+        fingerprints = ArchiveFingerprintReader { _, _ -> null },
         // A real [DataArchiveCapabilityCache] over fake parts, as `AppBackupViewModelTest` and
         // `MeasureAppDataUseCaseTest` both build it. This screen used to call
         // `probeDataArchiveCapability()` directly, which skipped the cache's `hasAnyPrivilege`

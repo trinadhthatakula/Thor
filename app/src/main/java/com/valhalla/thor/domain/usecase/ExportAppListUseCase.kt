@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.repository.baseApkSha256
 import com.valhalla.thor.domain.model.APP_LIST_MIME
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.appListCsv
@@ -65,8 +66,10 @@ class ExportAppListUseCase(
         runCatchingExport { fileStore.shareUri(stage(apps, createdAt)) }
     }
 
-    private suspend fun stage(apps: List<AppInfo>, createdAt: Long): File =
-        fileStore.stageText(appListFileName(createdAt), appListCsv(apps))
+    private suspend fun stage(apps: List<AppInfo>, createdAt: Long): File {
+        val digests = apps.associate { it.packageName to baseApkSha256(it.sourceDir) }
+        return fileStore.stageText(appListFileName(createdAt), appListCsv(apps, digests))
+    }
 
     private inline fun <T> runCatchingExport(block: () -> T): Result<T> = try {
         Result.success(block())

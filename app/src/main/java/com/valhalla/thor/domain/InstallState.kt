@@ -24,7 +24,8 @@ sealed interface InstallState {
         val isUpdate: Boolean,
         val isDowngrade: Boolean = false,
         val oldVersion: String? = null,
-        val oldVersionCode: Long? = null
+        val oldVersionCode: Long? = null,
+        val oldBaseApkSha256: String? = null,
     ) : InstallState {
 
         // getVersionInfo() lived here: dead code (@Suppress("unused"), no call sites) that

@@ -98,7 +98,10 @@ import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.theme.LocalTechnicalFontFamily
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
+import com.valhalla.thor.presentation.utils.apkVersion
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
+import com.valhalla.thor.presentation.utils.rememberBaseApkSha256
+import com.valhalla.thor.presentation.utils.withApkFingerprint
 import com.valhalla.thor.util.AppLocale
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -198,6 +201,7 @@ fun AppInfoDetailsScreen(
 
                 state.detailedInfo?.appInfo?.packageName == packageName -> {
                     val details = state.detailedInfo!!
+                    val sha256 = rememberBaseApkSha256(details.appInfo)
                     Column(
                         modifier = Modifier.fillMaxSize().then(
                             if (showOnlyHeaderAndActions) Modifier.verticalScroll(rememberScrollState())
@@ -207,6 +211,7 @@ fun AppInfoDetailsScreen(
                         if (!showOnlyTabs) {
                             AppInfoHeaderAndActions(
                                 appInfo = details.appInfo,
+                                baseApkSha256 = sha256,
                                 isRoot = state.isRoot,
                                 isShizuku = state.isShizuku,
                                 isDhizuku = state.isDhizuku,
@@ -238,7 +243,7 @@ fun AppInfoDetailsScreen(
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            AppInfoDetailBody(details, state.obbProbe)
+                            AppInfoDetailBody(details, state.obbProbe, sha256)
                         }
                     }
                 }
@@ -279,6 +284,7 @@ fun AppInfoDetailsScreen(
 @Composable
 fun AppInfoHeaderAndActions(
     appInfo: AppInfo,
+    baseApkSha256: String?,
     isRoot: Boolean,
     isShizuku: Boolean,
     isDhizuku: Boolean,
@@ -313,6 +319,7 @@ fun AppInfoHeaderAndActions(
     Column(modifier = modifier) {
         AppDetailsHeader(
             appInfo = appInfo,
+            baseApkSha256 = baseApkSha256,
             onOpen = onLaunchApp,
             onOpenSettings = onOpenSystemSettings,
             sharedTransitionScope = sharedTransitionScope,
@@ -496,6 +503,7 @@ fun AppInfoHeaderAndActions(
 fun AppInfoDetailBody(
     details: DetailedAppInfo,
     obbProbe: ObbProbe?,
+    baseApkSha256: String?,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
@@ -537,7 +545,7 @@ fun AppInfoDetailBody(
         }
 
         when (selectedTab) {
-            0 -> GeneralTabScreen(details, obbProbe)
+            0 -> GeneralTabScreen(details, obbProbe, baseApkSha256)
             1 -> ComponentsTabScreen(details)
             2 -> LibsAndFeaturesTabScreen(details)
             3 -> PermissionsTabScreen(details.permissions)
@@ -548,6 +556,7 @@ fun AppInfoDetailBody(
 @Composable
 private fun AppDetailsHeader(
     appInfo: AppInfo,
+    baseApkSha256: String?,
     onOpen: () -> Unit,
     onOpenSettings: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
@@ -711,7 +720,8 @@ private fun AppDetailsHeader(
                     )
                 }
                 StatusChip(
-                    text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
+                    text = stringResource(R.string.version_format, apkVersion(appInfo.versionName, appInfo.versionCode))
+                        .withApkFingerprint(baseApkSha256),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     textColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -721,7 +731,7 @@ private fun AppDetailsHeader(
 }
 
 @Composable
-private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?) {
+private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?, baseApkSha256: String?) {
     val appInfo = details.appInfo
     val context = LocalContext.current
     val installTime = remember(appInfo.firstInstallTime, context) { formatTime(appInfo.firstInstallTime, context) }
@@ -764,7 +774,7 @@ private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?) {
         item {
             InfoCard(
                 title = stringResource(R.string.info_app_version),
-                value = "${appInfo.versionName} (${appInfo.versionCode})"
+                value = apkVersion(appInfo.versionName, appInfo.versionCode).withApkFingerprint(baseApkSha256)
             )
         }
         item {
@@ -859,6 +869,11 @@ private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?) {
                     title = stringResource(R.string.info_shared_data_dir),
                     value = appInfo.sharedDataDir
                 )
+            }
+        }
+        baseApkSha256?.let { digest ->
+            item {
+                InfoCard(stringResource(R.string.info_base_apk_sha256), digest, monospace = true)
             }
         }
         details.signatureSha256?.let { sha256 ->

@@ -3,6 +3,12 @@
 
 package com.valhalla.thor.data.repository
 
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import com.valhalla.thor.domain.model.ArchiveBundleInfo
+import com.valhalla.thor.domain.model.ArchiveHeader
+import com.valhalla.thor.domain.model.ArchiveKdf
+import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import android.app.Application
 import android.net.Uri
 import androidx.core.net.toUri
@@ -88,6 +94,57 @@ class InputStagingAdoptionTest {
     }
 
     @Test
+    fun `preview hashes the archived base bytes even when a different split is named base apk`() = runBlocking {
+        val manifest = """{"package_name":"com.example.app","version_code":100,"split_apks":[
+            {"id":"base","file":"app.apk"},{"id":"config.en","file":"base.apk"}]}"""
+        val bytes = ByteArrayOutputStream()
+        ZipOutputStream(bytes).use { zip ->
+            for ((entry, contents) in listOf(
+                "metadata.json" to "{}", "manifest.json" to manifest, "icon.png" to "icon",
+                "app.apk" to "abc", "base.apk" to "split",
+            )) {
+                zip.putNextEntry(ZipEntry(entry))
+                zip.write(contents.toByteArray())
+                zip.closeEntry()
+            }
+        }
+        val archive = File(context.cacheDir, "test.thorbak")
+        ZipOutputStream(archive.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry(THORBAK_BUNDLE_ENTRY))
+            zip.write(bytes.toByteArray())
+        }
+        val header = ArchiveHeader(
+            createdAt = 1, thorVersionCode = 1, packageName = "com.example.app", versionCode = 100,
+            userId = 0, signerSha256 = "ab".repeat(32), kdf = ArchiveKdf(iterations = 4, salt = ""), verifier = "",
+            appBundle = ArchiveBundleInfo(bytes = bytes.size().toLong(), obbCapture = "none", obbCount = 0),
+        )
+        val parse: (File) -> PackageInfo? = { candidate ->
+            if (candidate.readText() == "abc") PackageInfo().apply {
+                packageName = header.packageName
+                longVersionCode = header.versionCode
+                applicationInfo = ApplicationInfo()
+            } else null
+        }
+        try {
+            ZipArchiveSource(archive, archive.name).use { source ->
+                assertEquals(
+                    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                    source.backupBaseApkSha256(header, context.cacheDir, parse),
+                )
+                assertNull(source.backupBaseApkSha256(header.copy(versionCode = 101), context.cacheDir, parse))
+                assertNull(source.backupBaseApkSha256(header.copy(appBundle = null), context.cacheDir, parse))
+                val damaged = header.copy(appBundle = header.appBundle!!.copy(sha256 = "00".repeat(32)))
+                assertNull(source.backupBaseApkSha256(damaged, context.cacheDir, parse))
+                assertFalse(context.cacheDir.listFiles().orEmpty().any {
+                    it.name.startsWith("backup_preview_") || it.name.startsWith("backup_base_")
+                })
+            }
+        } finally {
+            archive.delete()
+        }
+    }
+
+    @Test
     fun `readable local file stages without privileged access`() = runBlocking {
         val source = File(context.cacheDir, "local-input.xapk")
         val bytes = bundle()
@@ -151,6 +208,7 @@ class InputStagingAdoptionTest {
         val input = analyzer.analyzePortable(uri).getOrThrow() as PortablePackage.App
         assertEquals(1, opens)
         assertEquals("com.example.preview", input.analysis.metadata.packageName)
+        assertNull(input.analysis.metadata.baseApkSha256)
         assertArrayEquals(bytes, input.analysis.staged.file.readBytes())
         analyzer.discard(input.analysis)
         assertFalse(input.analysis.staged.file.exists())

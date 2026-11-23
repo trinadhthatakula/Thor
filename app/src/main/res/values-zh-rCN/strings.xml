@@ -335,6 +335,7 @@
     <string name="info_obb_none">无游戏数据</string>
     <string name="info_obb_unknown">暂时无法检查</string>
     <string name="info_shared_data_dir">共享数据目录</string>
+    <string name="info_base_apk_sha256">基础 APK 的 SHA-256</string>
     <string name="info_signature_sha256">SHA-256 签名指纹</string>
     <string name="info_bloat_description">被标记的原因</string>
     <string name="no_permissions_found">未找到权限</string>

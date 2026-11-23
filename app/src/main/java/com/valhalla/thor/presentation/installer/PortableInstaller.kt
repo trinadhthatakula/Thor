@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.installer
 
+import com.valhalla.thor.presentation.utils.ApkVersionText
+import com.valhalla.thor.presentation.utils.apkVersion
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -418,27 +420,19 @@ fun PortableInstaller(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceAround
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
                                     text = stringResource(R.string.installed_label),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Text(
-                                    text = s.oldVersion ?: "—",
+                                ApkVersionText(
+                                    version = apkVersion(s.oldVersion ?: "—", s.oldVersionCode),
+                                    sha256 = s.oldBaseApkSha256,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
-                                // The version CODE is what the update/downgrade verdict is made
-                                // on; names routinely disagree with it. Without this on screen a
-                                // correct downgrade call is indistinguishable from a bug.
-                                s.oldVersionCode?.let { code ->
-                                    Text(
-                                        text = "($code)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
                             }
                             Icon(
                                 painter = painterResource(R.drawable.open_in_new),
@@ -446,28 +440,19 @@ fun PortableInstaller(
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
                             )
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
                                     text = stringResource(R.string.new_version_label),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Text(
-                                    text = meta.version,
+                                ApkVersionText(
+                                    version = apkVersion(meta.version, meta.versionCode),
+                                    sha256 = meta.baseApkSha256,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                // Null means the analyzer could not read a version code out of the
-                                // file (see isVersionDowngrade) — there is no number to show. A
-                                // real code of 0 is NOT that case and is shown like any other.
-                                meta.versionCode?.let { code ->
-                                    Text(
-                                        text = "($code)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
                             }
                         }
                     } else {
@@ -485,10 +470,9 @@ fun PortableInstaller(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text(
-                                text = meta.versionCode
-                                    ?.let { "${meta.version} ($it)" }
-                                    ?: meta.version,
+                            ApkVersionText(
+                                version = apkVersion(meta.version, meta.versionCode),
+                                sha256 = meta.baseApkSha256,
                                 // Appending the code made this line ~10 characters longer. Both
                                 // children of this Row are unweighted, so at a large font scale on
                                 // a narrow screen it would wrap mid-token beside a centred prefix.
