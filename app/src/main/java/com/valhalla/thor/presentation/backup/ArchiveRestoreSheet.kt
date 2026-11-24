@@ -57,6 +57,7 @@ import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ArchiveRestoreWarning
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.presentation.common.RequestNotificationsWhenJobStarts
+import com.valhalla.thor.presentation.utils.ApkVersionText
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
@@ -324,12 +325,11 @@ private fun RestoreSheetBody(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = stringResource(
-                        R.string.restore_archive_version,
-                        header.versionName ?: "?",
-                        header.versionCode
-                    ),
+                ApkVersionText(
+                    version = stringResource(R.string.restore_archive_version_name, header.versionName ?: "?"),
+                    versionCode = stringResource(R.string.restore_archive_version_code, header.versionCode),
+                    sha256 = state.baseApkSha256,
+                    copyChecksum = true,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

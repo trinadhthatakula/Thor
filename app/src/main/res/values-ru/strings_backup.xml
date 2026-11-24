@@ -44,7 +44,8 @@
     <string name="restore_pick_prompt">Выберите файл резервной копии Thor (.thorbak), чтобы просмотреть его содержимое.</string>
     <string name="restore_pick_file">Выбрать файл</string>
     <string name="restore_pick_another">Выбрать другой файл</string>
-    <string name="restore_archive_version">Версия %1$s (%2$d)</string>
+    <string name="restore_archive_version_name">Версия %1$s</string>
+    <string name="restore_archive_version_code">(%1$d)</string>
     <string name="restore_archive_created">Создано %1$s</string>
     <string name="restore_will_install_first">Это приложение не установлено. Thor сначала установит его из резервной копии.</string>
     <plurals name="restore_include_obb">

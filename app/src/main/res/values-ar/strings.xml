@@ -372,6 +372,7 @@
     <string name="info_obb_none">لا توجد بيانات لعبة</string>
     <string name="info_obb_unknown">لا يمكن التحقق حاليًا</string>
     <string name="info_shared_data_dir">دليل البيانات المشتركة</string>
+    <string name="info_base_apk_sha256">بصمة SHA-256 لملف APK الأساسي</string>
     <string name="info_signature_sha256">بصمة توقيع SHA-256</string>
     <string name="info_bloat_description">سبب هذا التصنيف</string>
     <string name="no_permissions_found">لم يتم العثور على أذونات</string>

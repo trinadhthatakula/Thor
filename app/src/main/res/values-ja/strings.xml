@@ -421,6 +421,7 @@
     <string name="info_obb_none">ゲームデータがありません</string>
     <string name="info_obb_unknown">現在確認できません</string>
     <string name="info_shared_data_dir">共有データディレクトリ</string>
+    <string name="info_base_apk_sha256">ベース APK の SHA-256</string>
     <string name="info_signature_sha256">SHA-256署名フィンガープリント</string>
     <string name="info_bloat_description">これにフラグが立てられる理由</string>
     <string name="no_permissions_found">権限が見つかりません</string>

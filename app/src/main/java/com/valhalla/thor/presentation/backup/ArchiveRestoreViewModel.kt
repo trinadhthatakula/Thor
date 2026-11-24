@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
 import com.valhalla.thor.domain.repository.ArchiveOpenOutcome
+import com.valhalla.thor.domain.repository.ArchiveFingerprintReader
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.usecase.ArchiveHeaderOutcome
@@ -197,6 +198,7 @@ data class ArchiveRestoreUiState(
     /** The archive's own display name, for a message. Never a path. */
     val fileName: String? = null,
     val header: ArchiveHeader? = null,
+    val baseApkSha256: String? = null,
     /** Why this file cannot be used at all — not a gate refusal, which needs a readable header. */
     val error: ArchiveRestoreMessage? = null,
     val supported: Boolean? = null,
@@ -256,6 +258,7 @@ data class ArchiveRestoreUiState(
 @KoinViewModel
 internal class ArchiveRestoreViewModel(
     private val sources: ArchiveSourceFactory,
+    private val fingerprints: ArchiveFingerprintReader,
     private val openArchive: OpenArchiveUseCase,
     /**
      * The cache, never [AppDataProbe] directly.
@@ -390,6 +393,7 @@ internal class ArchiveRestoreViewModel(
                 error = null,
                 fileName = null,
                 header = null,
+                baseApkSha256 = null,
                 refusal = null,
                 warnings = emptyList(),
                 installFirst = false,
@@ -450,39 +454,45 @@ internal class ArchiveRestoreViewModel(
                 }
             }
 
-            // Closed as soon as the header is out. Holding it open would hold a ParcelFileDescriptor
-            // for as long as the screen lives, and the worker opens the container again anyway.
-            val outcome = source.use { openArchive.readHeader(it) }
-            val header = when (outcome) {
-                is ArchiveHeaderOutcome.Read -> outcome.header
-                is ArchiveHeaderOutcome.NotAnArchive -> {
-                    // `FromBelow`: this sentence names the archive entry that was missing, which is
-                    // detail only the reader has. An id here would throw it away.
-                    updateForOpen(generation) {
-                        it.copy(
-                            loading = false,
-                            error = ArchiveRestoreMessage.FromBelow(outcome.reason),
-                        )
+            source.use {
+                val outcome = openArchive.readHeader(source)
+                val header = when (outcome) {
+                    is ArchiveHeaderOutcome.Read -> outcome.header
+                    is ArchiveHeaderOutcome.NotAnArchive -> {
+                        // `FromBelow`: this sentence names the archive entry that was missing, which is
+                        // detail only the reader has. An id here would throw it away.
+                        updateForOpen(generation) {
+                            it.copy(
+                                loading = false,
+                                error = ArchiveRestoreMessage.FromBelow(outcome.reason),
+                            )
+                        }
+                        return@launchGuarded
                     }
-                    return@launchGuarded
+                }
+
+                // The decoded header is display-only until the complete archive authenticates. In
+                // particular, its package name must not select an installed app or feed the restore gate.
+                val obbCount = header.appBundle?.obbCount ?: 0
+                val held = header.heldClasses()
+                val defaultSelected = held.intersect(supportedClasses)
+                updateForOpen(generation) { state ->
+                    state.copy(
+                        fileName = source.displayName,
+                        header = header,
+                        selected = defaultSelected.toSet(),
+                        obbOffered = obbCount > 0,
+                        restoreObb = obbCount > 0,
+                    )
+                }
+                // Keep the password prompt independent of large APK reads. This use closes the
+                // source as soon as the preview finishes, even if authentication is still running.
+                launch { tryRememberedPassphrase(generation) }
+                val digest = fingerprints.read(source, header)
+                updateForOpen(generation) {
+                    if (it.header == header) it.copy(baseApkSha256 = digest) else it
                 }
             }
-
-            // The decoded header is display-only until the complete archive authenticates. In
-            // particular, its package name must not select an installed app or feed the restore gate.
-            val obbCount = header.appBundle?.obbCount ?: 0
-            val held = header.heldClasses()
-            val defaultSelected = held.intersect(supportedClasses)
-            updateForOpen(generation) { state ->
-                state.copy(
-                    fileName = source.displayName,
-                    header = header,
-                    selected = defaultSelected.toSet(),
-                    obbOffered = obbCount > 0,
-                    restoreObb = obbCount > 0,
-                )
-            }
-            tryRememberedPassphrase(generation)
         }
     }
 
@@ -807,6 +817,7 @@ internal class ArchiveRestoreViewModel(
             state.copy(
                 loading = false,
                 header = authenticatedHeader,
+                baseApkSha256 = state.baseApkSha256.takeIf { state.header == authenticatedHeader },
                 selected = state.selected.intersect(held),
                 unlocked = true,
                 passphraseNeeded = false,

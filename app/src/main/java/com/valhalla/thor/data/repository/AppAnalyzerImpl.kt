@@ -21,6 +21,9 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.data.kernel.inspectPortableKernel
 import com.valhalla.thor.domain.model.PortablePackage
 import com.valhalla.thor.domain.model.StagedPackage
+import com.valhalla.thor.domain.model.ArchiveHeader
+import com.valhalla.thor.domain.repository.ArchiveFingerprintReader
+import com.valhalla.thor.domain.repository.ArchiveSource
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CancellationException
@@ -47,12 +50,18 @@ import com.valhalla.thor.domain.repository.SystemRepository
 
 private const val INSTALL_STAGING_DIR_NAME = "staged_installs"
 
-@Single(binds = [AppAnalyzer::class])
-class AppAnalyzerImpl(
+@Single(binds = [AppAnalyzer::class, ArchiveFingerprintReader::class])
+internal class AppAnalyzerImpl(
     private val context: Context,
     private val systemRepository: SystemRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
-) : AppAnalyzer {
+) : AppAnalyzer, ArchiveFingerprintReader {
+
+    override suspend fun read(source: ArchiveSource, header: ArchiveHeader): String? = withContext(ioDispatcher) {
+        if (header.appBundle == null) return@withContext null
+        val dir = stagingDirectory()
+        source.backupBaseApkSha256(header, dir, ::parseArchiveSafely)
+    }
 
     override suspend fun analyze(uri: Uri): Result<AnalyzedPackage> =
         stageAndAnalyze(uri, allowKernel = false).map { (it as PortablePackage.App).analysis }
@@ -60,17 +69,18 @@ class AppAnalyzerImpl(
     override suspend fun analyzePortable(uri: Uri): Result<PortablePackage> =
         stageAndAnalyze(uri, allowKernel = true)
 
+    private fun stagingDirectory(): File =
+        File(context.cacheDir, INSTALL_STAGING_DIR_NAME).apply {
+            mkdirs()
+            sweepStaleStagedPackages(this, System.currentTimeMillis())
+        }
+
     private suspend fun stageAndAnalyze(uri: Uri, allowKernel: Boolean): Result<PortablePackage> = withContext(ioDispatcher) {
         val displayName = uri.getDisplayName(context)
         // Random, unpredictable temp names (CWE-377): avoids collisions between
         // concurrent analyses and predictable cache paths.
         val token = UUID.randomUUID()
-        val stagingDir = File(context.cacheDir, INSTALL_STAGING_DIR_NAME).apply { mkdirs() }
-        // The staged file outlives analyze() now, so a process death between the analysis and
-        // the install (or the dismissal) would strand a full copy of the input — hundreds of MB
-        // for an XAPK. Nothing else ever revisits this directory, so the sweep happens on the
-        // way in.
-        sweepStaleStagedPackages(stagingDir, System.currentTimeMillis())
+        val stagingDir = stagingDirectory()
         // The whole input is copied to disk once so it can be read with ZipFile
         // (random access via the central directory). ZipInputStream cannot handle
         // APKPure's STORED-with-data-descriptor entries (zero-size local headers) and
@@ -159,7 +169,7 @@ class AppAnalyzerImpl(
         analyzed
     }
 
-    private fun readPortableMetadata(
+    private suspend fun readPortableMetadata(
         file: File, scratch: File, displayName: String?, allowKernel: Boolean,
     ): Result<PortablePackage> {
         if (allowKernel) inspectPortableKernel(file)?.let { inspection ->
@@ -179,7 +189,7 @@ class AppAnalyzerImpl(
      * Identify the already-staged [bundleFile], using [apkFile] as scratch space for a base APK
      * extracted out of a bundle. Reads no URI: everything here is the one staged copy.
      */
-    private fun readMetadata(
+    private suspend fun readMetadata(
         bundleFile: File,
         apkFile: File,
         displayName: String?
@@ -255,13 +265,8 @@ class AppAnalyzerImpl(
         // then generic candidates (config/splits last), all of them inside the install
         // set. Extract each from the bundle and return the first that parses as a real,
         // non-split base APK.
-        for (candidate in plan.identityCandidates) {
-            val base = candidate.substringAfterLast('/')
-            if (!BundleZip.extractEntryTo(bundleFile, base, apkFile)) continue
-            val archiveInfo = parseArchiveSafely(apkFile)
-            if (archiveInfo != null && archiveInfo.applicationInfo != null) {
-                return Result.success(metadataFrom(archiveInfo, apkFile, iconBytes))
-            }
+        extractParsedBase(bundleFile, apkFile, plan, ::parseArchiveSafely)?.let { archiveInfo ->
+            return Result.success(metadataFrom(archiveInfo, apkFile, iconBytes))
         }
 
         // Phase 5: parse the whole file as a monolithic APK — but ONLY when the installer would
@@ -371,7 +376,7 @@ class AppAnalyzerImpl(
     }
 
     /** Build [AppMetadata] from a parsed [PackageInfo], preferring the XAPK icon. */
-    private fun metadataFrom(
+    private suspend fun metadataFrom(
         archiveInfo: PackageInfo,
         tempFile: File,
         iconBytes: ByteArray?
@@ -407,6 +412,7 @@ class AppAnalyzerImpl(
             // selected identity candidate extracted from that same staged bundle. Never source
             // this security-sensitive policy input from manifest.json/info.json sidecars.
             targetSdk = parsedArchiveTargetSdk(archiveInfo),
+            baseApkSha256 = baseApkSha256(tempFile.path),
         )
     }
 

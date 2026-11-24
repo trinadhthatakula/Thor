@@ -58,12 +58,11 @@ internal fun csvField(value: String?): String {
  * already applied by the time the list gets here. A user who wants everything runs it twice, which
  * is why `is_system` is a column even though one export only ever holds one kind.
  *
- * No install size. It is the difference between a write that finishes before the sheet closes and
- * one that needs a progress bar and a cancel button, because the size of an app is a
- * `StorageStatsManager` round trip per package.
+ * The full checksum belongs in its own column so version codes remain numeric and existing column
+ * positions stay stable. An inaccessible base APK leaves only its checksum cell empty.
  */
-fun appListCsv(apps: List<AppInfo>): String = buildString {
-    append("app_name,package_name,version_name,version_code,installer,is_system,enabled,suspended")
+fun appListCsv(apps: List<AppInfo>, baseApkDigests: Map<String, String?> = emptyMap()): String = buildString {
+    append("app_name,package_name,version_name,version_code,installer,is_system,enabled,suspended,base_apk_sha256")
     append('\n')
     apps.forEach { app ->
         append(csvField(app.appName ?: app.packageName)).append(',')
@@ -75,7 +74,8 @@ fun appListCsv(apps: List<AppInfo>): String = buildString {
         append(csvField(app.installerPackageName?.takeUnless { it == Installers.UNKNOWN })).append(',')
         append(app.isSystem).append(',')
         append(app.enabled).append(',')
-        append(app.isSuspended)
+        append(app.isSuspended).append(',')
+        append(baseApkDigests[app.packageName].orEmpty())
         append('\n')
     }
 }

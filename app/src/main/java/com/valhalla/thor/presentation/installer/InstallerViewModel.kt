@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.data.repository.baseApkSha256
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.AnalyzedPackage
@@ -298,6 +299,10 @@ class InstallerViewModel(
                     val installedVersionCode =
                         existing?.let { PackageInfoCompat.getLongVersionCode(it) }
 
+                    val installedDigest = existing?.applicationInfo?.sourceDir?.let { path ->
+                        withContext(ioDispatcher) { baseApkSha256(path) }
+                    }
+
                     isUpdateOperation = existing != null
                     // isVersionDowngrade itself gates on a KNOWN version code: the analyzer yields
                     // null when it could not read one out of the file, and any number we
@@ -312,7 +317,8 @@ class InstallerViewModel(
                             isUpdate = isUpdateOperation,
                             isDowngrade = isDowngrade,
                             oldVersion = existing?.versionName,
-                            oldVersionCode = installedVersionCode
+                            oldVersionCode = installedVersionCode,
+                            oldBaseApkSha256 = installedDigest,
                         )
                     )
                 },

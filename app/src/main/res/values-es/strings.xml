@@ -342,6 +342,7 @@
     <string name="info_obb_none">Sin datos de juego</string>
     <string name="info_obb_unknown">No se puede comprobar ahora</string>
     <string name="info_shared_data_dir">Directorio de datos compartidos</string>
+    <string name="info_base_apk_sha256">SHA-256 del APK base</string>
     <string name="info_signature_sha256">Huella digital de firma SHA-256</string>
     <string name="info_bloat_description">Por qué está marcada</string>
     <string name="no_permissions_found">No se encontraron permisos</string>

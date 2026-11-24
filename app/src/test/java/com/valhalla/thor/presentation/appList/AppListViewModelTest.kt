@@ -1207,6 +1207,30 @@ class AppListViewModelTest {
     }
 
     @Test
+    fun `export writes the full base APK checksum and leaves an unreadable row blank`() = runTest {
+        val base = java.io.File.createTempFile("thor-csv-", ".apk")
+        try {
+            base.writeText("abc")
+            val vm = viewModel(AnimationIntensity.LOW)
+            runCurrent()
+            appRepository.apps.value = listOf(
+                userApp("com.a").copy(sourceDir = base.path),
+                userApp("com.b").copy(sourceDir = base.path + ".missing"),
+            )
+            runCurrent()
+            vm.exportList()
+            runCurrent()
+
+            val rows = fileStore.written.values.single().trimEnd('\n').lines().drop(1)
+            val digests = rows.associate { row -> row.split(',')[1] to row.substringAfterLast(',') }
+            assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", digests["com.a"])
+            assertEquals("", digests["com.b"])
+        } finally {
+            base.delete()
+        }
+    }
+
+    @Test
     fun `a successful export names where it landed`() = runTest {
         val vm = viewModel(AnimationIntensity.LOW)
         val events = mutableListOf<AppListEvent>()

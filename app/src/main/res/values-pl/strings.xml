@@ -574,6 +574,7 @@
     <string name="info_obb_none">Brak danych gry</string>
     <string name="info_obb_unknown">Nie można teraz sprawdzić</string>
     <string name="info_shared_data_dir">Katalog danych współdzielonych</string>
+    <string name="info_base_apk_sha256">SHA-256 bazowego pliku APK</string>
     <string name="info_signature_sha256">Odcisk podpisu SHA-256</string>
     <!-- Label for the UAD debloat note. The note itself ships in uad_lists.json and is English
          only, so this card renders in the General tab alone — never in the app-info header. -->

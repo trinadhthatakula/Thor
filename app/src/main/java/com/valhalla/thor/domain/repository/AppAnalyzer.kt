@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import android.net.Uri
+import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.PortablePackage
 
@@ -27,4 +28,9 @@ interface AppAnalyzer {
      * call from a teardown path that may or may not have staged anything.
      */
     fun discard(analyzed: AnalyzedPackage?)
+}
+
+/** Reads the base APK from the selected backup without consulting the installed package. */
+internal fun interface ArchiveFingerprintReader {
+    suspend fun read(source: ArchiveSource, header: ArchiveHeader): String?
 }

@@ -93,6 +93,9 @@ import com.valhalla.thor.presentation.home.components.BentoTile
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import com.valhalla.thor.presentation.utils.ArchiveIconModel
+import com.valhalla.thor.presentation.utils.rememberBaseApkSha256
+import com.valhalla.thor.presentation.utils.ApkVersionText
+import com.valhalla.thor.presentation.utils.apkVersionCode
 import com.valhalla.thor.presentation.widgets.AppIcon
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
@@ -934,11 +937,10 @@ private fun AppPickerBottomSheet(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                        }
-
-                        app.versionName?.let { ver ->
-                            Text(
-                                text = ver,
+                            ApkVersionText(
+                                version = app.versionName,
+                                versionCode = apkVersionCode(app.versionCode),
+                                sha256 = rememberBaseApkSha256(app),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

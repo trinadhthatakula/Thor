@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -77,6 +78,7 @@ import com.valhalla.thor.presentation.common.LocalOperationFeedbackTarget
 import com.valhalla.thor.presentation.common.OperationFeedbackHost
 import com.valhalla.thor.presentation.common.rememberOperationFeedback
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
+import com.valhalla.thor.presentation.utils.rememberBaseApkSha256
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -190,6 +192,7 @@ fun AppInfoSheet(
     val detailsViewModel = koinViewModel<AppInfoDetailsViewModel>(
         viewModelStoreOwner = rememberViewModelStoreOwner()
     )
+    val baseApkSha256 = rememberBaseApkSha256(appInfo)
     val detailsState by detailsViewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(appInfo.packageName) {
         detailsViewModel.observeProfileMembership(appInfo.packageName)
@@ -277,6 +280,7 @@ fun AppInfoSheet(
                 // 1. Header (Icon + Title)
                 AppHeader(
                     appInfo = appInfo,
+                    baseApkSha256 = baseApkSha256,
                     onOpen = onLaunchApp,
                     onOpenSettings = onOpenSystemSettings
                 )
@@ -406,6 +410,7 @@ fun AppInfoSheet(
                             details != null -> AppInfoDetailBody(
                                 details = details,
                                 obbProbe = detailsState.obbProbe,
+                                baseApkSha256 = baseApkSha256,
                                 modifier = Modifier.fillMaxSize()
                             )
 
@@ -550,6 +555,7 @@ fun AppInfoSheet(
 @Composable
 private fun AppHeader(
     appInfo: AppInfo,
+    baseApkSha256: String?,
     onOpen: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -600,8 +606,9 @@ private fun AppHeader(
         Spacer(Modifier.height(8.dp))
 
         // Metadata Chips
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             if (appInfo.splitPublicSourceDirs.isNotEmpty()) {
                 StatusChip(
@@ -629,11 +636,7 @@ private fun AppHeader(
                     textColor = textColor
                 )
             }
-            StatusChip(
-                text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                textColor = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            AppVersionChip(appInfo, baseApkSha256)
         }
 
         Spacer(Modifier.height(12.dp))

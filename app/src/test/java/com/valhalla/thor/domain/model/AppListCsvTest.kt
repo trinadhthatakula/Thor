@@ -24,7 +24,7 @@ class AppListCsvTest {
     @Test
     fun `the header names every column, in order`() {
         assertEquals(
-            "app_name,package_name,version_name,version_code,installer,is_system,enabled,suspended",
+            "app_name,package_name,version_name,version_code,installer,is_system,enabled,suspended,base_apk_sha256",
             rows(appListCsv(emptyList())).single()
         )
     }
@@ -45,7 +45,7 @@ class AppListCsvTest {
         )
 
         assertEquals(
-            "Example,com.example,1.2.3,42,com.android.vending,false,true,false",
+            "Example,com.example,1.2.3,42,com.android.vending,false,true,false,",
             rows(appListCsv(listOf(app)))[1]
         )
     }
@@ -53,7 +53,7 @@ class AppListCsvTest {
     @Test
     fun `the package name stands in for an app with no label`() {
         assertEquals(
-            "com.example,com.example,,0,,false,true,false",
+            "com.example,com.example,,0,,false,true,false,",
             rows(appListCsv(listOf(userApp("com.example"))))[1]
         )
     }
@@ -72,7 +72,7 @@ class AppListCsvTest {
         val app = userApp("com.example", appName = "Files, Photos & More")
 
         assertEquals(
-            "\"Files, Photos & More\",com.example,,0,,false,true,false",
+            "\"Files, Photos & More\",com.example,,0,,false,true,false,",
             rows(appListCsv(listOf(app)))[1]
         )
     }

@@ -25,4 +25,5 @@ data class AppMetadata(
      * known value rather than being rewritten to null.
      */
     val targetSdk: Int? = null,
+    val baseApkSha256: String? = null,
 )

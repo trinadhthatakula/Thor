@@ -342,6 +342,7 @@
     <string name="info_obb_none">Aucune donnée de jeu</string>
     <string name="info_obb_unknown">Vérification impossible pour l\'instant</string>
     <string name="info_shared_data_dir">Répertoire de données partagées</string>
+    <string name="info_base_apk_sha256">SHA-256 de l’APK de base</string>
     <string name="info_signature_sha256">Empreinte numérique de signature SHA-256</string>
     <string name="info_bloat_description">Pourquoi elle est signalée</string>
     <string name="no_permissions_found">Aucune autorisation trouvée</string>

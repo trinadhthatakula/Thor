@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.presentation.installer
 
+import com.valhalla.thor.presentation.utils.ApkVersionText
+import com.valhalla.thor.presentation.utils.apkVersionCode
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -26,7 +28,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -70,6 +74,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
@@ -77,6 +82,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -180,6 +188,89 @@ internal fun LegacyInstallConfirmationDialog(
             }
         },
     )
+}
+
+@Composable
+internal fun InstallerVersions(state: InstallState.ReadyToInstall) {
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (state.isUpdate) {
+            InstallerVersion(
+                label = stringResource(R.string.installed_label),
+                version = state.oldVersion ?: "—",
+                code = state.oldVersionCode,
+                sha256 = state.oldBaseApkSha256,
+                incoming = false,
+            )
+        }
+        InstallerVersion(
+            label = stringResource(if (state.isUpdate) R.string.new_version_label else R.string.version_prefix).trim(),
+            version = state.meta.version,
+            code = state.meta.versionCode,
+            sha256 = state.meta.baseApkSha256,
+            incoming = true,
+        )
+    }
+}
+
+@Composable
+private fun InstallerVersion(label: String, version: String, code: Long?, sha256: String?, incoming: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ApkVersionText(
+            version = version,
+            versionCode = apkVersionCode(code),
+            sha256 = sha256,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (incoming) FontWeight.Bold else FontWeight.Medium,
+            ),
+            color = if (incoming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            copyChecksum = true,
+            centered = true,
+        )
+    }
+}
+
+private val decimalCode = Regex("[0-9]+")
+
+@Composable
+internal fun DowngradeExplanation(newCode: Long, installedCode: Long) {
+    val explanation = stringResource(
+        R.string.install_downgrade_code_explainer,
+        newCode.toString(),
+        installedCode.toString(),
+    )
+    val style = MaterialTheme.typography.bodySmall
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints {
+        val width = constraints.maxWidth
+        val text = remember(explanation, style, measurer, density, width) {
+            buildAnnotatedString {
+                append(explanation)
+                for (match in decimalCode.findAll(explanation)) {
+                    // Include room for the sentence punctuation immediately following a translated placeholder.
+                    val tokenWidth = measurer.measure("(${match.value})", style).size.width
+                    if (tokenWidth > width && width > 0) {
+                        val size = with(density) { (style.fontSize.toPx() * width / tokenWidth).toSp() }
+                        addStyle(SpanStyle(fontSize = size), match.range.first, match.range.last + 1)
+                    }
+                }
+            }
+        }
+        Text(text, style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -408,143 +499,46 @@ fun PortableInstaller(
                         }
                     }
 
-                    if (s.isUpdate) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceAround
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = stringResource(R.string.installed_label),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = s.oldVersion ?: "—",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                // The version CODE is what the update/downgrade verdict is made
-                                // on; names routinely disagree with it. Without this on screen a
-                                // correct downgrade call is indistinguishable from a bug.
-                                s.oldVersionCode?.let { code ->
-                                    Text(
-                                        text = "($code)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Icon(
-                                painter = painterResource(R.drawable.open_in_new),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = stringResource(R.string.new_version_label),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = meta.version,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                // Null means the analyzer could not read a version code out of the
-                                // file (see isVersionDowngrade) — there is no number to show. A
-                                // real code of 0 is NOT that case and is shown like any other.
-                                meta.versionCode?.let { code ->
-                                    Text(
-                                        text = "($code)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.version_prefix),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = meta.versionCode
-                                    ?.let { "${meta.version} ($it)" }
-                                    ?: meta.version,
-                                // Appending the code made this line ~10 characters longer. Both
-                                // children of this Row are unweighted, so at a large font scale on
-                                // a narrow screen it would wrap mid-token beside a centred prefix.
-                                // fill = false keeps the Row centred while bounding this child.
-                                modifier = Modifier.weight(1f, fill = false),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
+                    InstallerVersions(s)
 
                     if (s.isDowngrade) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
                                 .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                                 .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.danger),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.danger),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
                                 Text(
                                     text = stringResource(R.string.install_downgrade_warning),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                // A version NAME can move forward while the version CODE moves
-                                // back: an app only has to hand-maintain its code and slip (Omni
-                                // Browser shipped name 1.2.4.7 as code 27, then name 1.2.5.1 as
-                                // code 25). Android sequences updates by code alone, so spell the
-                                // two numbers out; otherwise a correct verdict reads as a Thor
-                                // bug — which is exactly how this got reported. Passed as strings
-                                // on purpose: see the comment on install_downgrade_code_explainer.
-                                // Both codes are non-null whenever isDowngrade is true; the checks
-                                // are here so the branch can never render the word "null".
-                                val newCode = meta.versionCode
-                                val installedCode = s.oldVersionCode
-                                if (newCode != null && installedCode != null) {
-                                    Text(
-                                        text = stringResource(
-                                            R.string.install_downgrade_code_explainer,
-                                            newCode.toString(),
-                                            installedCode.toString()
-                                        ),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                            }
+                            // A version NAME can move forward while the version CODE moves
+                            // back: an app only has to hand-maintain its code and slip (Omni
+                            // Browser shipped name 1.2.4.7 as code 27, then name 1.2.5.1 as
+                            // code 25). Android sequences updates by code alone, so spell the
+                            // two numbers out; otherwise a correct verdict reads as a Thor
+                            // bug — which is exactly how this got reported. Passed as strings
+                            // on purpose: see the comment on install_downgrade_code_explainer.
+                            // Both codes are non-null whenever isDowngrade is true; the checks
+                            // are here so the branch can never render the word "null".
+                            val newCode = meta.versionCode
+                            val installedCode = s.oldVersionCode
+                            if (newCode != null && installedCode != null) {
+                                DowngradeExplanation(newCode, installedCode)
                             }
                         }
                     } else if (s.isUpdate) {
@@ -719,11 +713,12 @@ fun PortableInstaller(
                         }
                     }
 
-                    Row(
+                    FlowRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = {

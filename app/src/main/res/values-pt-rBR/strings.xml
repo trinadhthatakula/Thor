@@ -600,7 +600,7 @@
       Backup &amp; Restore Hub UI
 
       Absent on purpose: backup_hub_filter_all, backup_hub_filter_bundles,
-      backup_hub_hero_restore_desc, backup_hub_no_archives and restore_archive_version read the
+      backup_hub_hero_restore_desc, backup_hub_no_archives and restore_archive_version_name read the
       same in both variants, so values-pt already says it right.
     -->
     <string name="home_backup_restore_subtitle">Gerenciar backups e restaurar dados</string>
