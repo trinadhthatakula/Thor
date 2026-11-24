@@ -12,10 +12,10 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -71,6 +71,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,7 +102,10 @@ import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.apkVersion
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.presentation.utils.rememberBaseApkSha256
-import com.valhalla.thor.presentation.utils.withApkFingerprint
+import com.valhalla.thor.presentation.utils.ApkVersionText
+import com.valhalla.thor.presentation.utils.apkVersionCode
+import com.valhalla.thor.presentation.utils.shortApkFingerprint
+import com.valhalla.thor.presentation.widgets.AppVersionChip
 import com.valhalla.thor.util.AppLocale
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -672,9 +676,9 @@ private fun AppDetailsHeader(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.horizontalScroll(rememberScrollState())
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (appInfo.isSystem) {
                     StatusChip(
@@ -719,12 +723,7 @@ private fun AppDetailsHeader(
                         textColor = chipTextColor
                     )
                 }
-                StatusChip(
-                    text = stringResource(R.string.version_format, apkVersion(appInfo.versionName, appInfo.versionCode))
-                        .withApkFingerprint(baseApkSha256),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    textColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                AppVersionChip(appInfo, baseApkSha256)
             }
         }
     }
@@ -774,8 +773,16 @@ private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?, base
         item {
             InfoCard(
                 title = stringResource(R.string.info_app_version),
-                value = apkVersion(appInfo.versionName, appInfo.versionCode).withApkFingerprint(baseApkSha256)
-            )
+                value = "${apkVersion(appInfo.versionName, appInfo.versionCode)} ${shortApkFingerprint(baseApkSha256)}",
+            ) {
+                ApkVersionText(
+                    version = appInfo.versionName,
+                    versionCode = apkVersionCode(appInfo.versionCode),
+                    sha256 = baseApkSha256,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = LocalTechnicalFontFamily.current),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
         item {
             InfoCard(
@@ -873,7 +880,14 @@ private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?, base
         }
         baseApkSha256?.let { digest ->
             item {
-                InfoCard(stringResource(R.string.info_base_apk_sha256), digest, monospace = true)
+                InfoCard(stringResource(R.string.info_base_apk_sha256), digest) {
+                    Text(
+                        text = digest.chunked(8).joinToString(" "),
+                        style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr),
+                        fontFamily = LocalTechnicalFontFamily.current,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
         details.signatureSha256?.let { sha256 ->
@@ -1692,7 +1706,15 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
 private fun InfoCard(
     title: String,
     value: String,
-    monospace: Boolean = value.contains("/") || value.contains(".")
+    monospace: Boolean = value.contains("/") || value.contains("."),
+    content: @Composable () -> Unit = {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontFamily = if (monospace) LocalTechnicalFontFamily.current else null,
+        )
+    },
 ) {
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
@@ -1734,12 +1756,7 @@ private fun InfoCard(
             color = MaterialTheme.colorScheme.primary
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = if (monospace) LocalTechnicalFontFamily.current else null
-        )
+        content()
     }
 }
 

@@ -326,12 +326,10 @@ private fun RestoreSheetBody(
                     fontWeight = FontWeight.Bold
                 )
                 ApkVersionText(
-                    version = stringResource(
-                        R.string.restore_archive_version,
-                        header.versionName ?: "?",
-                        header.versionCode
-                    ),
+                    version = stringResource(R.string.restore_archive_version_name, header.versionName ?: "?"),
+                    versionCode = stringResource(R.string.restore_archive_version_code, header.versionCode),
                     sha256 = state.baseApkSha256,
+                    copyChecksum = true,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

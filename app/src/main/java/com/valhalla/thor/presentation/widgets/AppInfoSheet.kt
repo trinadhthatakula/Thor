@@ -77,10 +77,8 @@ import com.valhalla.thor.presentation.backup.AppBackupSheet
 import com.valhalla.thor.presentation.common.LocalOperationFeedbackTarget
 import com.valhalla.thor.presentation.common.OperationFeedbackHost
 import com.valhalla.thor.presentation.common.rememberOperationFeedback
-import com.valhalla.thor.presentation.utils.apkVersion
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.presentation.utils.rememberBaseApkSha256
-import com.valhalla.thor.presentation.utils.withApkFingerprint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -638,12 +636,7 @@ private fun AppHeader(
                     textColor = textColor
                 )
             }
-            StatusChip(
-                text = stringResource(R.string.version_format, apkVersion(appInfo.versionName, appInfo.versionCode))
-                    .withApkFingerprint(baseApkSha256),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                textColor = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            AppVersionChip(appInfo, baseApkSha256)
         }
 
         Spacer(Modifier.height(12.dp))

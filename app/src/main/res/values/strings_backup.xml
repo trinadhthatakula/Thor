@@ -134,11 +134,9 @@
     <string name="restore_pick_prompt">Choose a Thor backup file (.thorbak) to see what it holds.</string>
     <string name="restore_pick_file">Choose a file</string>
     <string name="restore_pick_another">Choose a different file</string>
-    <!--
-      PluralsCandidate fires on the %2$d. It is a version code — an identifier the app displays
-      alongside the version name — so there is no quantity to agree with and no plural form to pick.
-    -->
-    <string name="restore_archive_version" tools:ignore="PluralsCandidate">Version %1$s (%2$d)</string>
+    <string name="restore_archive_version_name">Version %1$s</string>
+    <!-- The numeric placeholder is a version code, so it has no plural form. -->
+    <string name="restore_archive_version_code" tools:ignore="PluralsCandidate">(%1$d)</string>
     <string name="restore_archive_created">Backed up %1$s</string>
     <string name="restore_will_install_first">This app is not installed. Thor will install it from the backup first.</string>
     <plurals name="restore_include_obb">
@@ -291,7 +289,7 @@
       string renders one number and only ever that number, and no plural form can vary. It is NOT
       kept on the grounds that "characters" is uncounted: lint names that noun and it is right to,
       and values-ar (on the translation list, where 8 takes a different form from 1 and 2) would
-      otherwise be a real problem. Do not lean on restore_archive_version's precedent here; that one
+      otherwise be a real problem. Do not lean on restore_archive_version_code's precedent here; that one
       is exempt because a version code is not a count at all, which is a different argument.
 
       If MIN_PASSPHRASE_LENGTH ever becomes user-configurable or varies by build, this reasoning

@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.presentation.backup.hub
 
-import com.valhalla.thor.presentation.utils.apkVersion
 import android.content.Intent
 import android.text.format.Formatter
 import android.widget.Toast
@@ -95,7 +94,8 @@ import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import com.valhalla.thor.presentation.utils.ArchiveIconModel
 import com.valhalla.thor.presentation.utils.rememberBaseApkSha256
-import com.valhalla.thor.presentation.utils.withApkFingerprint
+import com.valhalla.thor.presentation.utils.ApkVersionText
+import com.valhalla.thor.presentation.utils.apkVersionCode
 import com.valhalla.thor.presentation.widgets.AppIcon
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
@@ -937,14 +937,13 @@ private fun AppPickerBottomSheet(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            app.versionName?.let { version ->
-                                Text(
-                                    text = apkVersion(version, app.versionCode)
-                                        .withApkFingerprint(rememberBaseApkSha256(app)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            ApkVersionText(
+                                version = app.versionName,
+                                versionCode = apkVersionCode(app.versionCode),
+                                sha256 = rememberBaseApkSha256(app),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
