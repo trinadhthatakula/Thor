@@ -621,6 +621,17 @@
     <string name="disable_shortcuts">تعطيل الاختصارات</string>
     <string name="disable_shortcuts_desc">إيقاف اختصارات المجمّد، بما فيها الاختصارات المثبّتة على الشاشة الرئيسية</string>
     <string name="shortcuts_disabled_message">الاختصارات معطّلة في Thor</string>
+    <string name="profile_icon">أيقونة الملف</string>
+    <string name="profile_update_shortcut">تحديث الاختصار</string>
+    <string name="profile_update_icon_hint">يؤدي هذا إلى تحديث أيقونة الاختصار الحالي والملف.</string>
+    <string name="profile_pin_icon_hint">عند إضافة الاختصار، تُحفظ هذه الأيقونة أيضًا في الملف.</string>
+    <string name="profile_icon_games">الألعاب</string>
+    <string name="profile_icon_office">المكتب</string>
+    <string name="profile_icon_entertainment">الترفيه</string>
+    <string name="profile_icon_kids">الأطفال</string>
+    <string name="profile_icon_social">اجتماعي</string>
+    <string name="profile_icon_communication">التواصل</string>
+    <string name="profile_icon_music">الموسيقى</string>
     <string name="shortcut_freeze_profile">تجميد %1$s</string>
     <string name="profile_no_apps_to_freeze">لا توجد تطبيقات لتجميدها في هذا الملف</string>
     <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>

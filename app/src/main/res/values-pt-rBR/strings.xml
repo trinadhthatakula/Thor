@@ -224,6 +224,17 @@
     <string name="disable_shortcuts">Desativar atalhos</string>
     <string name="disable_shortcuts_desc">Desativa os atalhos do Congelador, inclusive os fixados na tela inicial</string>
     <string name="shortcuts_disabled_message">Os atalhos estão desativados no Thor</string>
+    <string name="profile_icon">Ícone do perfil</string>
+    <string name="profile_update_shortcut">Atualizar atalho</string>
+    <string name="profile_update_icon_hint">Isso atualiza o ícone do atalho existente e do perfil.</string>
+    <string name="profile_pin_icon_hint">Ao adicionar o atalho, este ícone também é salvo no perfil.</string>
+    <string name="profile_icon_games">Jogos</string>
+    <string name="profile_icon_office">Escritório</string>
+    <string name="profile_icon_entertainment">Entretenimento</string>
+    <string name="profile_icon_kids">Crianças</string>
+    <string name="profile_icon_social">Redes sociais</string>
+    <string name="profile_icon_communication">Comunicação</string>
+    <string name="profile_icon_music">Música</string>
     <string name="shortcut_freeze_profile">Congelar %1$s</string>
     <string name="profile_no_apps_to_freeze">Este perfil não tem aplicativos para congelar</string>
     <string name="add_to_home_screen">Adicionar à tela inicial</string>

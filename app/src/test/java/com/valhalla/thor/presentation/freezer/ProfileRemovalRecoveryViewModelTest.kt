@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.SuspensionChange
 import com.valhalla.thor.domain.model.AppInfo
@@ -120,9 +121,9 @@ class ProfileRemovalRecoveryViewModelTest {
         apps.apps.value = listOf(frozen("app").copy(isSuspended = true), AppInfo(packageName = "keep"))
         val id = profiles.create("Before", listOf("app", "keep"))
         val recording = object : FreezeProfileRepository by profiles {
-            override suspend fun update(profileId: Long, name: String, packageNames: List<String>) {
+            override suspend fun update(profileId: Long, name: String, packageNames: List<String>, icon: FreezeProfileIcon?) {
                 trace += "write:$name"
-                profiles.update(profileId, name, packageNames)
+                profiles.update(profileId, name, packageNames, icon)
             }
         }
         system.onCall = { call ->

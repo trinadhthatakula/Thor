@@ -299,6 +299,17 @@
     <string name="disable_shortcuts">Отключить ярлыки</string>
     <string name="disable_shortcuts_desc">Отключить ярлыки заморозки, включая закреплённые на главном экране</string>
     <string name="shortcuts_disabled_message">Ярлыки отключены в Thor</string>
+    <string name="profile_icon">Значок профиля</string>
+    <string name="profile_update_shortcut">Обновить ярлык</string>
+    <string name="profile_update_icon_hint">Значок изменится у существующего ярлыка и у профиля.</string>
+    <string name="profile_pin_icon_hint">При добавлении ярлыка этот значок также сохранится в профиле.</string>
+    <string name="profile_icon_games">Игры</string>
+    <string name="profile_icon_office">Офис</string>
+    <string name="profile_icon_entertainment">Развлечения</string>
+    <string name="profile_icon_kids">Дети</string>
+    <string name="profile_icon_social">Соцсети</string>
+    <string name="profile_icon_communication">Общение</string>
+    <string name="profile_icon_music">Музыка</string>
     <string name="shortcut_freeze_profile">Заморозить %1$s</string>
     <string name="profile_no_apps_to_freeze">В этом профиле нет приложений для заморозки</string>
     <string name="add_to_home_screen">Добавить на рабочий стол</string>

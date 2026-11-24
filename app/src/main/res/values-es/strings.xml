@@ -583,6 +583,17 @@
     <string name="disable_shortcuts">Desactivar accesos directos</string>
     <string name="disable_shortcuts_desc">Desactiva los accesos directos del Congelador, incluidos los fijados en la pantalla de inicio</string>
     <string name="shortcuts_disabled_message">Los accesos directos están desactivados en Thor</string>
+    <string name="profile_icon">Icono del perfil</string>
+    <string name="profile_update_shortcut">Actualizar acceso directo</string>
+    <string name="profile_update_icon_hint">Se actualizará el icono del acceso directo existente y del perfil.</string>
+    <string name="profile_pin_icon_hint">Al añadir el acceso directo, este icono también se guarda en el perfil.</string>
+    <string name="profile_icon_games">Juegos</string>
+    <string name="profile_icon_office">Oficina</string>
+    <string name="profile_icon_entertainment">Entretenimiento</string>
+    <string name="profile_icon_kids">Niños</string>
+    <string name="profile_icon_social">Social</string>
+    <string name="profile_icon_communication">Comunicación</string>
+    <string name="profile_icon_music">Música</string>
     <string name="shortcut_freeze_profile">Congelar %1$s</string>
     <string name="profile_no_apps_to_freeze">No hay aplicaciones que congelar en este perfil</string>
     <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>

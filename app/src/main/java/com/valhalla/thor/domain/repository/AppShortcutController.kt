@@ -3,6 +3,9 @@
 
 package com.valhalla.thor.domain.repository
 
+import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
+
 /**
  * Domain port for the launcher-shortcut side effects a view model has to trigger.
  *
@@ -42,7 +45,9 @@ interface AppShortcutController {
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut for [action]. */
     fun pinBulkShortcut(action: String)
 
-    fun pinProfileShortcut(profileId: Long, name: String)
+    fun isProfileShortcutPinned(profileId: Long): Boolean
+
+    fun pinProfileShortcut(profile: FreezeProfile, icon: FreezeProfileIcon)
 
     /** Refresh renamed pins and retire shortcuts for deleted profiles. */
     fun syncProfileShortcuts()

@@ -1,0 +1,10 @@
+<resources>
+    <color name="profile_icon_freezer_background">#c2d9ec</color>
+    <color name="profile_icon_games_background">#ffb579</color>
+    <color name="profile_icon_office_background">#bed8c4</color>
+    <color name="profile_icon_entertainment_background">#d4c4ec</color>
+    <color name="profile_icon_kids_background">#f1d581</color>
+    <color name="profile_icon_social_background">#ecb9c4</color>
+    <color name="profile_icon_communication_background">#a9d8d5</color>
+    <color name="profile_icon_music_background">#c9c7ef</color>
+</resources>

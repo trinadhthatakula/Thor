@@ -34,8 +34,11 @@ interface FreezeProfileDao {
     @Insert
     suspend fun insertProfile(entity: FreezeProfileEntity): Long
 
-    @Query("UPDATE freeze_profiles SET name = :name WHERE id = :profileId")
-    suspend fun renameProfile(profileId: Long, name: String)
+    @Query("UPDATE freeze_profiles SET name = :name, icon = COALESCE(:icon, icon) WHERE id = :profileId")
+    suspend fun updateDetails(profileId: Long, name: String, icon: String?)
+
+    @Query("UPDATE freeze_profiles SET icon = :icon WHERE id = :profileId AND icon = :expectedIcon")
+    suspend fun changeIconIfCurrent(profileId: Long, expectedIcon: String, icon: String): Int
 
     @Query("DELETE FROM freeze_profiles WHERE id = :profileId")
     suspend fun deleteProfile(profileId: Long)
@@ -125,8 +128,8 @@ interface FreezeProfileDao {
      * reconcile. Inside a transaction the constraint violation rolls the membership back with it.
      */
     @Transaction
-    suspend fun updateProfile(profileId: Long, name: String, packageNames: List<String>) {
-        renameProfile(profileId, name)
+    suspend fun updateProfile(profileId: Long, name: String, packageNames: List<String>, icon: String?) {
+        updateDetails(profileId, name, icon)
         replaceApps(profileId, packageNames)
     }
 }

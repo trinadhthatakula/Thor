@@ -40,6 +40,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,6 +58,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.presentation.widgets.rememberCanForceStopApps
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
@@ -96,7 +99,8 @@ fun FreezeProfilesSheet(
     hasPrivilege: Boolean,
     onRun: (profileId: Long, op: BulkOp, mode: FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
-    onPin: ((FreezeProfile) -> Unit)?,
+    onPin: ((FreezeProfile, FreezeProfileIcon) -> Unit)?,
+    isProfilePinned: suspend (Long) -> Boolean?,
     onCreate: () -> Unit,
     onEdit: (FreezeProfile) -> Unit,
     onDelete: (profileId: Long) -> Unit,
@@ -108,6 +112,13 @@ fun FreezeProfilesSheet(
     // list that nothing else in the app can reconstruct. Plain remember: a confirmation that
     // survived process death would outlive the row it was raised from.
     var pendingDelete by remember { mutableStateOf<FreezeProfile?>(null) }
+    var pinProfileId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pinExists by remember(pinProfileId) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(pinProfileId) {
+        val id = pinProfileId ?: return@LaunchedEffect
+        pinExists = isProfilePinned(id)
+        if (pinExists == null) pinProfileId = null
+    }
     val writeLocked by rememberUpdatedState(isWorking)
     val sheetState = rememberBottomSheetState(
         initialValue = SheetValue.Hidden,
@@ -186,13 +197,27 @@ fun FreezeProfilesSheet(
                         isWorking = isWorking,
                         onRun = { op, mode -> onRun(profile.id, op, mode) },
                         onKill = onKill,
-                        onPin = onPin,
+                        onPin = if (onPin != null) { selected -> pinProfileId = selected.id } else null,
                         onEdit = { onEdit(profile) },
                         onDelete = { pendingDelete = profile }
                     )
                 }
             }
         }
+    }
+
+    val pinProfile = profiles.firstOrNull { it.id == pinProfileId }
+    val alreadyPinned = pinExists
+    if (pinProfile != null && onPin != null && alreadyPinned != null) {
+        ProfileShortcutIconDialog(
+            profile = pinProfile,
+            alreadyPinned = alreadyPinned,
+            onDismiss = { pinProfileId = null },
+            onConfirm = { icon ->
+                pinProfileId = null
+                onPin(pinProfile, icon)
+            },
+        )
     }
 
     pendingDelete?.let { profile ->
@@ -285,6 +310,8 @@ private fun FreezeProfileRow(
                 .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            ProfileIconTile(profile.icon, Modifier.size(36.dp))
+            Spacer(Modifier.size(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = profile.name,

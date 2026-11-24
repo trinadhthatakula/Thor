@@ -38,7 +38,7 @@ class SweepMigrationTest {
     fun clearFixtureFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.deleteDatabase(TEST_DATABASE)
-        (1..10).forEach { context.deleteDatabase("$TEST_DATABASE-chain-$it") }
+        (1..11).forEach { context.deleteDatabase("$TEST_DATABASE-chain-$it") }
     }
 
     @Test
@@ -231,14 +231,28 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema11() = runBlocking {
-        (1..10).forEach { startVersion ->
+    fun migrate11To12_keepsExistingProfileAndDefaultsItsIcon() = runBlocking {
+        helper.createDatabase(11).apply {
+            execSQL("INSERT INTO freeze_profiles (id, name, createdAt) VALUES (7, 'Games', 123)")
+            execSQL("INSERT INTO freeze_profile_apps (profileId, packageName) VALUES (7, 'example.game')")
+            close()
+        }
+        val migrated = helper.migrateAndValidateTables(12)
+        assertEquals("freezer", migrated.stringValue("freeze_profiles", "icon"))
+        assertEquals("Games", migrated.stringValue("freeze_profiles", "name"))
+        assertEquals("example.game", migrated.stringValue("freeze_profile_apps", "packageName"))
+        migrated.close()
+    }
+
+    @Test
+    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema12() = runBlocking {
+        (1..11).forEach { startVersion ->
             val databaseName = "$TEST_DATABASE-chain-$startVersion"
             val chainHelper = helperFor(databaseName)
             chainHelper.createDatabase(startVersion).close()
 
             chainHelper.migrateAndValidateTables(
-                11,
+                12,
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_8_9,
                 AppDatabase.MIGRATION_9_10,

@@ -9,6 +9,9 @@ object FreezerShortcutContract {
     const val EXTRA_PACKAGE = "com.valhalla.thor.extra.FREEZER_SHORTCUT_PACKAGE"
     const val EXTRA_PROFILE_ID = "com.valhalla.thor.extra.FREEZER_SHORTCUT_PROFILE_ID"
 
+    const val EXTRA_PROFILE_ICON = "com.valhalla.thor.extra.PROFILE_ICON"
+    const val EXTRA_PREVIOUS_ICON = "com.valhalla.thor.extra.PREVIOUS_PROFILE_ICON"
+
     const val ACTION_LAUNCH = "launch"
     const val ACTION_FREEZE_ALL = "freeze_all"
     const val ACTION_UNFREEZE_ALL = "unfreeze_all"

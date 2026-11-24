@@ -386,6 +386,17 @@
     <string name="disable_shortcuts">Disable shortcuts</string>
     <string name="disable_shortcuts_desc">Turn off Freezer shortcuts, including pinned home-screen shortcuts</string>
     <string name="shortcuts_disabled_message">Shortcuts are disabled in Thor</string>
+    <string name="profile_icon">Profile icon</string>
+    <string name="profile_update_shortcut">Update shortcut</string>
+    <string name="profile_update_icon_hint">This updates the icon on your existing shortcut and profile.</string>
+    <string name="profile_pin_icon_hint">Adding the shortcut also saves this icon to the profile.</string>
+    <string name="profile_icon_games">Games</string>
+    <string name="profile_icon_office">Office</string>
+    <string name="profile_icon_entertainment">Entertainment</string>
+    <string name="profile_icon_kids">Kids</string>
+    <string name="profile_icon_social">Social</string>
+    <string name="profile_icon_communication">Communication</string>
+    <string name="profile_icon_music">Music</string>
     <string name="shortcut_freeze_profile">Freeze %1$s</string>
     <string name="profile_no_apps_to_freeze">No apps to freeze in this profile</string>
     <string name="add_to_home_screen">Add to Home screen</string>
