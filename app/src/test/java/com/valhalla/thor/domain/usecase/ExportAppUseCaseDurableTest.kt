@@ -71,24 +71,26 @@ class ExportAppUseCaseDurableTest {
                 val captureBoundary = VerifiedOperationBoundary { operationBoundaries++ }
 
                 var receipt: ExportPublicationReceipt? = null
-                val first = exportDurableBundle(
+                suspend fun export(app: AppInfo, publicationIdentity: AppExportPublicationIdentity) = exportDurableBundle(
                     bundleBuilder = builder,
                     fileStore = store,
-                    appInfo = appInfo(label = "Foo", version = "1.0"),
+                    appInfo = app,
                     format = BundleFormat.APK,
                     session = session,
-                    publicationIdentity = identity,
+                    publicationIdentity = publicationIdentity,
                     execution = PrivilegeExecutionContext(),
                     captureProgress = VerifiedProgress.NONE,
                     captureBoundary = captureBoundary,
                     publicationProgress = VerifiedProgress.NONE,
                     publicationStart = { receipt = it },
                 ).getOrThrow()
+
+                val first = export(appInfo(label = "Foo", version = "1.0"), identity)
                 val persisted = identity.copy(receipt = requireNotNull(receipt))
-                val replay = store.reconcilePublicExport(session.target, persisted) as AppExportPublicationReconciliation.Complete
+                val replay = export(appInfo(label = "Renamed", version = "2.0"), persisted)
 
                 assertEquals(AppExportPublicationStatus.PUBLISHED, first.status)
-                assertEquals(AppExportPublicationStatus.RECONCILED, replay.publication.status)
+                assertEquals(AppExportPublicationStatus.RECONCILED, replay.status)
                 assertEquals(1, builder.buildCount)
                 assertEquals(1, store.publishCount)
                 assertEquals(1, operationBoundaries)

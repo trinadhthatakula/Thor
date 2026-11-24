@@ -179,7 +179,13 @@ class AppBundleFileStoreImpl(
             }
             target is ExportTargetChoice.Custom -> {
                 val tree = target.treeUri.toUri()
-                val entry = treeEntries(tree).singleOrNull { it.displayName == receipt.fileName && it.isComplete }
+                val entries = treeEntries(tree)
+                val stagingName = partialName(identity.fileName)
+                // A matching final can belong to another export while our partial still exists.
+                if (entries.any { it.displayName == stagingName }) {
+                    return@withContext AppExportPublicationReconciliation.Absent
+                }
+                val entry = entries.singleOrNull { it.displayName == receipt.fileName && it.isComplete }
                 entry != null && context.contentResolver.openInputStream(
                     DocumentsContract.buildDocumentUriUsingTree(tree, entry.id)
                 )?.use { it.sha256Hex() } == requireNotNull(receipt.sha256)

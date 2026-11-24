@@ -104,6 +104,21 @@ class SafExportPublicationTest {
         assertEquals(AppExportPublicationReconciliation.Absent, store.reconcilePublicExport(target, published))
     }
 
+    @Test fun `SAF recovery rejects a matching final while the task's exact staging document exists`() = runBlocking {
+        val receipt = ExportPublicationReceipt("Example.apk", sha256 = source.inputStream().use { it.sha256Hex() })
+        val persisted = identity.copy(receipt = receipt)
+        provider.documents["foreign"] = receipt.fileName
+        source.copyTo(File(source.parentFile, "provider-foreign"), overwrite = true)
+        provider.documents["created"] = partialName(identity.fileName)
+        provider.documents["other-partial"] = partialName("another-task.apk")
+
+        assertEquals(AppExportPublicationReconciliation.Absent, store.reconcilePublicExport(target, persisted))
+        assertTrue(provider.deleted.isEmpty())
+
+        provider.documents.remove("created")
+        assertTrue(store.reconcilePublicExport(target, persisted) is AppExportPublicationReconciliation.Complete)
+    }
+
     @Test fun `API 28 Downloads numbers repeated exports and keeps both payloads`() = runBlocking {
         val downloads = ExportTargetChoice.Downloads
         val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), THOR_DOWNLOADS_SUBDIR)
