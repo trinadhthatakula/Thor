@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppBundleBuilder
@@ -69,32 +70,24 @@ class ExportAppUseCaseDurableTest {
                 var operationBoundaries = 0
                 val captureBoundary = VerifiedOperationBoundary { operationBoundaries++ }
 
-                val first = exportDurableBundle(
+                var receipt: ExportPublicationReceipt? = null
+                suspend fun export(app: AppInfo, publicationIdentity: AppExportPublicationIdentity) = exportDurableBundle(
                     bundleBuilder = builder,
                     fileStore = store,
-                    appInfo = appInfo(label = "Foo", version = "1.0"),
+                    appInfo = app,
                     format = BundleFormat.APK,
                     session = session,
-                    publicationIdentity = identity,
+                    publicationIdentity = publicationIdentity,
                     execution = PrivilegeExecutionContext(),
                     captureProgress = VerifiedProgress.NONE,
                     captureBoundary = captureBoundary,
                     publicationProgress = VerifiedProgress.NONE,
-                    publicationStart = {},
+                    publicationStart = { receipt = it },
                 ).getOrThrow()
-                val replay = exportDurableBundle(
-                    bundleBuilder = builder,
-                    fileStore = store,
-                    appInfo = appInfo(label = "Renamed", version = "9.9"),
-                    format = BundleFormat.APK,
-                    session = session,
-                    publicationIdentity = identity,
-                    execution = PrivilegeExecutionContext(),
-                    captureProgress = VerifiedProgress.NONE,
-                    captureBoundary = captureBoundary,
-                    publicationProgress = VerifiedProgress.NONE,
-                    publicationStart = {},
-                ).getOrThrow()
+
+                val first = export(appInfo(label = "Foo", version = "1.0"), identity)
+                val persisted = identity.copy(receipt = requireNotNull(receipt))
+                val replay = export(appInfo(label = "Renamed", version = "2.0"), persisted)
 
                 assertEquals(AppExportPublicationStatus.PUBLISHED, first.status)
                 assertEquals(AppExportPublicationStatus.RECONCILED, replay.status)
@@ -102,7 +95,7 @@ class ExportAppUseCaseDurableTest {
                 assertEquals(1, store.publishCount)
                 assertEquals(1, operationBoundaries)
                 assertEquals(listOf(identity.fileName), builder.requestedNames)
-                assertEquals(listOf(identity, identity), store.reconciledIdentities)
+                assertEquals(listOf(identity, persisted), store.reconciledIdentities)
             } finally {
                 root.deleteRecursively()
             }
@@ -128,7 +121,7 @@ class ExportAppUseCaseDurableTest {
                     publicationIdentity: AppExportPublicationIdentity?, execution: PrivilegeExecutionContext,
                     captureProgress: VerifiedProgress, captureBoundary: VerifiedOperationBoundary,
                     publicationProgress: VerifiedProgress,
-                    publicationStart: suspend () -> Unit,
+                    publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
                 ) = exportDurableBundle(builder, store, appInfo, format, session, requireNotNull(publicationIdentity),
                     execution, captureProgress, captureBoundary, publicationProgress, publicationStart)
             }
@@ -236,12 +229,16 @@ class ExportAppUseCaseDurableTest {
             mime: String,
             identity: AppExportPublicationIdentity,
             progress: VerifiedProgress,
+            requestedName: String,
+            beforePublish: suspend (ExportPublicationReceipt) -> Unit,
         ): AppExportPublication {
             assertEquals(identity.fileName, file.name)
-            assertTrue(identity.fileName != "Foo_1.0.apk")
-            beforePublish()
+            assertEquals("Foo_1.0.apk", requestedName)
+            this.beforePublish()
+            val receipt = ExportPublicationReceipt(requestedName, mediaStoreId = 42L)
+            beforePublish(receipt)
             publishCount++
-            publishedIdentity = identity
+            publishedIdentity = identity.copy(receipt = receipt)
             return AppExportPublication(
                 destinationLabel = "Downloads/Thor",
                 status = AppExportPublicationStatus.PUBLISHED,

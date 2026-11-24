@@ -16,6 +16,7 @@ import com.valhalla.thor.domain.model.AppInfoActionId
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.FreezeCandidate
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.ComponentSnapshot
@@ -47,6 +48,10 @@ import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.model.isUsablePackageName
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.domain.model.ExportTargetChoice
+import com.valhalla.thor.domain.repository.VerifiedProgress
+import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
+import com.valhalla.thor.domain.repository.AppExportPublication
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
@@ -947,6 +952,18 @@ class FakeAppBundleBuilder(
     }
 }
 
+interface TestAppBundleFileStore : AppBundleFileStore {
+    override suspend fun publishPublicExport(
+        file: File,
+        target: ExportTargetChoice,
+        mime: String,
+        identity: AppExportPublicationIdentity,
+        progress: VerifiedProgress,
+        requestedName: String,
+        beforePublish: suspend (ExportPublicationReceipt) -> Unit,
+    ): AppExportPublication = error("Unused durable export")
+}
+
 /**
  * A file store backed by a real temp directory.
  *
@@ -955,7 +972,7 @@ class FakeAppBundleBuilder(
  * would put the app-list export beyond unit test for no reason. The bundle half still never runs
  * here; [FakeAppBundleBuilder] fails before a bundle can reach a write.
  */
-class FakeAppBundleFileStore : AppBundleFileStore {
+class FakeAppBundleFileStore : TestAppBundleFileStore {
 
     /** Created on first use, so a test that never exports leaves no temp directory behind. */
     private val stagingDir: File by lazy {

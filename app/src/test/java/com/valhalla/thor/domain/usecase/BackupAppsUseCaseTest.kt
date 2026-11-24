@@ -8,7 +8,7 @@ import com.valhalla.thor.domain.model.BackupIndex
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppBundleBuilder
-import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.presentation.TestAppBundleFileStore
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -610,7 +610,7 @@ private class RecordingFileStore(
     private val onWrite: (File, String) -> Unit = { _, _ -> },
     /** Flipped by the one test that changes the destination while a run is in flight. */
     var treeWritable: Boolean = false,
-) : AppBundleFileStore {
+) : TestAppBundleFileStore {
 
     val writes = mutableListOf<String>()
 

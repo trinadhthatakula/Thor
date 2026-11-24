@@ -21,6 +21,15 @@ import org.junit.Test
 class ArchiveDestinationTest {
 
     @Test
+    fun `readable export names keep their version and extension for long or reserved labels`() {
+        assertEquals("My_App_1.0.apk", readableExportName("My_App_1.0.apk"))
+        assertEquals("_Thor-task-example.apks", readableExportName("Thor-task-example.apks"))
+        val longName = readableExportName("X".repeat(300) + "_1.0.xapk")
+        assertTrue(longName.length < 255)
+        assertTrue(longName.endsWith("_1.0.xapk"))
+    }
+
+    @Test
     fun `a partial name cannot be mistaken for a finished archive`() {
         val partial = partialName(thorbakFileName("com.example.game", 42))
 
@@ -276,7 +285,7 @@ class ArchiveDestinationTest {
             },
             makeVisible = {
                 events += "visible"
-                true
+                identity.fileName
             },
             removePending = { events += "delete" },
         )
@@ -308,7 +317,7 @@ class ArchiveDestinationTest {
             },
             makeVisible = {
                 events += "visible"
-                true
+                identity.fileName
             },
             removePending = { events += "delete" },
         )
@@ -342,7 +351,7 @@ class ArchiveDestinationTest {
                 makeVisible = {
                     assertEquals(byteArrayOf(1, 2, 3, 4).toList(), output.toByteArray().toList())
                     events += "visible"
-                    true
+                    "Example_1.0.apk"
                 },
                 removePending = { events += "delete" },
             )
@@ -351,7 +360,7 @@ class ArchiveDestinationTest {
         destination.output.write(byteArrayOf(1, 2, 3, 4))
         val publication = destination.publish()
 
-        assertEquals(ArchivePublication(identity.fileName, 4L), publication)
+        assertEquals(ArchivePublication("Example_1.0.apk", 4L), publication)
         assertEquals(listOf("insert", "inspect", "open", "inspect", "visible"), events)
     }
 
@@ -379,7 +388,7 @@ class ArchiveDestinationTest {
                 },
                 makeVisible = {
                     events += "visible"
-                    true
+                    "Example_1.0.apk"
                 },
                 removePending = { events += "delete" },
             )

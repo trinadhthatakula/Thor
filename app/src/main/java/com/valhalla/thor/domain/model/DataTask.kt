@@ -261,6 +261,22 @@ sealed interface StoredDataTaskDetail {
     ) : StoredDataTaskDetail
 }
 
+/** Evidence recorded before making a readable export visible. MediaStore has stable row IDs;
+ * a tree provider may change its document ID when renaming, so other targets use the content hash. */
+data class ExportPublicationReceipt(
+    val fileName: String,
+    val sha256: String? = null,
+    val mediaStoreId: Long? = null,
+) {
+    init {
+        require(fileName.isNotBlank() && fileName != "." && fileName != "..")
+        require('/' !in fileName && '\\' !in fileName)
+        require((sha256 == null) != (mediaStoreId == null))
+        require(sha256 == null || sha256.matches(Regex("[0-9a-f]{64}")))
+        require(mediaStoreId == null || mediaStoreId >= 0)
+    }
+}
+
 data class DataTaskCheckpoint(
     val stage: DataTaskStage,
     val completed: Long,
@@ -270,6 +286,7 @@ data class DataTaskCheckpoint(
     val destructiveStarted: Boolean,
     val restoreMutationBreadcrumb: RestoreMutationBreadcrumb?,
     val recordedAtEpochMs: Long,
+    val exportReceipt: ExportPublicationReceipt? = null,
 ) {
     init {
         requireTaskProgress(completed, total)

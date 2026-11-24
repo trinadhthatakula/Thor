@@ -49,4 +49,10 @@ data class DataTaskItemEntity(
     val startedAtEpochMs: Long?,
     @ColumnInfo(name = "finished_at_epoch_ms")
     val finishedAtEpochMs: Long?,
+    @ColumnInfo(name = "publication_name")
+    val publicationName: String? = null,
+    @ColumnInfo(name = "publication_sha256")
+    val publicationSha256: String? = null,
+    @ColumnInfo(name = "publication_media_id")
+    val publicationMediaId: Long? = null,
 )

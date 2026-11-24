@@ -4,6 +4,7 @@ package com.valhalla.thor.data.backup.job
 
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.*
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.repository.*
 import com.valhalla.thor.domain.usecase.ExportSession
 import java.util.UUID
@@ -127,7 +128,7 @@ class LegacyExportPackageAdmissionTest {
             appInfo: AppInfo, format: BundleFormat, session: ExportSession,
             publicationIdentity: AppExportPublicationIdentity?, execution: PrivilegeExecutionContext,
             captureProgress: VerifiedProgress, captureBoundary: VerifiedOperationBoundary, publicationProgress: VerifiedProgress,
-            publicationStart: suspend () -> Unit,
+            publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
         ): Result<AppExportPublication> {
             assertNull(publicationIdentity)
             assertEquals("export_temp", session.stagingSubDir)

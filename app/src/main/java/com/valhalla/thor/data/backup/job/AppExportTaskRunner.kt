@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
 import com.valhalla.thor.domain.model.MAX_TASK_PRESENTATION_ARGUMENT_CHARS
@@ -70,7 +71,7 @@ internal interface AppExportTaskOperations {
         captureProgress: VerifiedProgress,
         captureBoundary: VerifiedOperationBoundary,
         publicationProgress: VerifiedProgress,
-        publicationStart: suspend () -> Unit,
+        publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
     ): Result<AppExportPublication>
 
     /** Process-local compatibility reporting may retain the destination label; Room never does. */
@@ -110,16 +111,18 @@ internal class AppExportTaskRunner(
             "Thor-task-${request.taskId}-${request.item.ordinal}." + payload.request.format.extension
         )
         var activeLabel = request.item.displayLabel ?: payload.request.label
-        if (!legacy && payload.request.treeUri != null && request.resumedFrom?.stage == DataTaskStage.PUBLISHING) {
-            // Keep this fence through repeated interruption. No PREPARING, package lookup or build
-            // may erase the only durable evidence that a provider side effect could already exist.
-            return try {
+        val interrupted = request.resumedFrom
+        if (!legacy && interrupted?.stage == DataTaskStage.PUBLISHING) {
+            // Inspect the recorded destination before resolving a possibly updated or removed app.
+            val recovered = try {
                 withContext(ioDispatcher) {
-                    if (checkpoints.persist(request.checkpoint(stage = DataTaskStage.PUBLISHING, label = activeLabel, nowMs = nowMs())) ==
-                        DataTaskSinkWrite.OWNERSHIP_LOST) return@withContext DataTaskRunOutcome.OwnershipLost
-                    when (val reconciled = operations.reconcilePublication(payload.request.target, requireNotNull(publicationIdentity))) {
+                    if (checkpoints.persist(interrupted.copy(recordedAtEpochMs = nowMs())) == DataTaskSinkWrite.OWNERSHIP_LOST) {
+                        return@withContext DataTaskRunOutcome.OwnershipLost
+                    }
+                    val identity = requireNotNull(publicationIdentity).copy(receipt = interrupted.exportReceipt)
+                    when (val reconciled = operations.reconcilePublication(payload.request.target, identity)) {
                         is AppExportPublicationReconciliation.Complete -> completed(reconciled.publication)
-                        AppExportPublicationReconciliation.Absent -> uncertainPublication()
+                        AppExportPublicationReconciliation.Absent -> if (payload.request.treeUri != null) uncertainPublication() else null
                     }
                 }
             } catch (e: CancellationException) {
@@ -127,6 +130,7 @@ internal class AppExportTaskRunner(
             } catch (_: Exception) {
                 uncertainPublication()
             }
+            if (recovered != null) return recovered
         }
         if (
             checkpoints.persist(
@@ -219,10 +223,10 @@ internal class AppExportTaskRunner(
                     captureProgress = captureProgress,
                     captureBoundary = captureBoundary,
                     publicationProgress = publicationProgress,
-                    publicationStart = {
+                    publicationStart = { receipt ->
                         if (!legacy && checkpoints.persist(request.checkpoint(
                                 stage = DataTaskStage.PUBLISHING, label = activeLabel, nowMs = nowMs(),
-                            )) == DataTaskSinkWrite.OWNERSHIP_LOST) {
+                            ).copy(exportReceipt = receipt)) == DataTaskSinkWrite.OWNERSHIP_LOST) {
                             throw ExportTaskOwnershipLostCancellation()
                         }
                     },

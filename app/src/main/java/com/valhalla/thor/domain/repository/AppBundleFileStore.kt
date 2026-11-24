@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.repository
 
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import java.io.File
 
@@ -15,8 +16,11 @@ fun interface VerifiedProgress {
     }
 }
 
-/** Stable, operation-owned name used to reconcile a durable public export after process death. */
-data class AppExportPublicationIdentity(val fileName: String) {
+/** Stable staging name, also the public filename used by exports from older versions. */
+data class AppExportPublicationIdentity(
+    val fileName: String,
+    val receipt: ExportPublicationReceipt? = null,
+) {
     init {
         require(fileName.isNotBlank() && fileName != "." && fileName != "..")
         require('/' !in fileName && '\\' !in fileName)
@@ -56,21 +60,16 @@ interface AppBundleFileStore {
         identity: AppExportPublicationIdentity,
     ): AppExportPublicationReconciliation = AppExportPublicationReconciliation.Absent
 
-    /** Publish [file] under [identity], reporting only bytes already written. */
+    /** Publish with [requestedName], checkpointing the recovery receipt before the final becomes visible. */
     suspend fun publishPublicExport(
         file: File,
         target: ExportTargetChoice,
         mime: String,
         identity: AppExportPublicationIdentity,
         progress: VerifiedProgress,
-    ): AppExportPublication {
-        require(file.name == identity.fileName)
-        val label = when (target) {
-            is ExportTargetChoice.Custom -> writeToTree(file, target.treeUri, mime)
-            ExportTargetChoice.Downloads -> writeToDownloads(file, mime)
-        }
-        return AppExportPublication(label, AppExportPublicationStatus.PUBLISHED)
-    }
+        requestedName: String,
+        beforePublish: suspend (ExportPublicationReceipt) -> Unit,
+    ): AppExportPublication
 
     /** Write [file] to public Downloads/Thor; returns a human-readable location label. */
     suspend fun writeToDownloads(file: File, mime: String): String

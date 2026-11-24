@@ -27,7 +27,7 @@ import com.valhalla.thor.domain.model.DataTaskState
 import com.valhalla.thor.domain.model.NewDataTaskOutput
 import com.valhalla.thor.domain.model.SharePrepareFormat
 import com.valhalla.thor.domain.model.StoredDataTaskDetail
-import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.presentation.TestAppBundleFileStore
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -630,7 +630,7 @@ class ShareIntentFactoryTest {
         val relativePath: String,
     )
 
-    private class RecordingFileStore : AppBundleFileStore {
+    private class RecordingFileStore : TestAppBundleFileStore {
         val files = mutableListOf<File>()
         val uris = mutableListOf<Uri>()
         var authority: String = "${BuildConfig.APPLICATION_ID}.provider"
