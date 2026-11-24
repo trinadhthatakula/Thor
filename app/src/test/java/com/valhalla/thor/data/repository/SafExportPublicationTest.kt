@@ -119,6 +119,29 @@ class SafExportPublicationTest {
         assertTrue(store.reconcilePublicExport(target, persisted) is AppExportPublicationReconciliation.Complete)
     }
 
+    @Test fun `API 28 Downloads recovers a matching final only after the task partial is moved`() = runBlocking {
+        val downloads = ExportTargetChoice.Downloads
+        val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), THOR_DOWNLOADS_SUBDIR)
+        val published = File(dir, "Example_1.0.apk")
+        val partial = File(dir, partialName(identity.fileName))
+        lateinit var persisted: AppExportPublicationIdentity
+        try {
+            store.publishPublicExport(source, downloads, "application/vnd.android.package-archive",
+                identity, VerifiedProgress.NONE, published.name) { receipt ->
+                persisted = identity.copy(receipt = receipt)
+                // Another writer supplies identical bytes before this task moves its partial.
+                source.copyTo(published)
+                assertEquals(AppExportPublicationReconciliation.Absent, store.reconcilePublicExport(downloads, persisted))
+                assertTrue(partial.isFile)
+                assertTrue(published.delete())
+            }
+            assertFalse(partial.exists())
+            assertTrue(store.reconcilePublicExport(downloads, persisted) is AppExportPublicationReconciliation.Complete)
+        } finally {
+            published.delete()
+        }
+    }
+
     @Test fun `API 28 Downloads numbers repeated exports and keeps both payloads`() = runBlocking {
         val downloads = ExportTargetChoice.Downloads
         val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), THOR_DOWNLOADS_SUBDIR)

@@ -42,6 +42,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.security.DigestInputStream
 import java.security.MessageDigest
 
@@ -193,8 +194,11 @@ class AppBundleFileStoreImpl(
             receipt.mediaStoreId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
                 reconcileMediaStoreRow(receipt.mediaStoreId)
             receipt.sha256 != null -> {
-                val file = File(legacyDownloadsDir(), receipt.fileName)
-                file.isFile && file.inputStream().use { it.sha256Hex() } == receipt.sha256
+                val dir = legacyDownloadsDir()
+                val partial = File(dir, partialName(identity.fileName))
+                val file = File(dir, receipt.fileName)
+                Files.notExists(partial.toPath(), NOFOLLOW_LINKS) &&
+                    file.isFile && file.inputStream().use { it.sha256Hex() } == receipt.sha256
             }
             else -> throw IOException("Could not inspect export destination")
         }
