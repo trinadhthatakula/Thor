@@ -42,6 +42,11 @@ interface AppShortcutController {
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut for [action]. */
     fun pinBulkShortcut(action: String)
 
+    fun pinProfileShortcut(profileId: Long, name: String)
+
+    /** Refresh renamed pins and retire shortcuts for deleted profiles. */
+    fun syncProfileShortcuts()
+
     /** Publish or disable Freezer shortcuts, including pinned shortcuts, to match the setting. */
     fun syncShortcuts(enabled: Boolean)
 }

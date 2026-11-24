@@ -185,11 +185,14 @@ class PrivilegeSweepSurfaceLauncher(
             }
         }
 
-    fun launch(
-        request: BulkRequest,
-        source: PrivilegeSweepSource,
-    ): Deferred<PrivilegeSweepLaunchResult> = scope.async {
-        launchSurfaceSweep(resolver, controller, request, source)
+    fun launchShortcut(request: BulkRequest): Deferred<PrivilegeSweepLaunchResult> = scope.async {
+        if (request.scope is BulkScope.Profile) {
+            // Another profile or a membership edit can change the targets between taps.
+            // Let the durable controller coalesce only equivalent resolved snapshots.
+            controller.launch(resolver.resolve(request, PrivilegeSweepSource.PROFILE))
+        } else {
+            launchSurfaceSweep(resolver, controller, request, PrivilegeSweepSource.LAUNCHER)
+        }
     }
 }
 

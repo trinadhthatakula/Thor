@@ -393,6 +393,8 @@
     <string name="disable_shortcuts">Desativar atalhos</string>
     <string name="disable_shortcuts_desc">Desativa os atalhos do Congelador, incluindo os fixados no ecrã principal</string>
     <string name="shortcuts_disabled_message">Os atalhos estão desativados no Thor</string>
+    <string name="shortcut_freeze_profile">Congelar %1$s</string>
+    <string name="profile_no_apps_to_freeze">Este perfil não tem aplicações para congelar</string>
     <string name="add_to_home_screen">Adicionar ao ecrã principal</string>
     <string name="freeze_all_apps">Congelar tudo no Congelador</string>
     <string name="shortcuts">Atalhos</string>

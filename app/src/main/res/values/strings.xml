@@ -386,6 +386,8 @@
     <string name="disable_shortcuts">Disable shortcuts</string>
     <string name="disable_shortcuts_desc">Turn off Freezer shortcuts, including pinned home-screen shortcuts</string>
     <string name="shortcuts_disabled_message">Shortcuts are disabled in Thor</string>
+    <string name="shortcut_freeze_profile">Freeze %1$s</string>
+    <string name="profile_no_apps_to_freeze">No apps to freeze in this profile</string>
     <string name="add_to_home_screen">Add to Home screen</string>
     <string name="freeze_all_apps">Freeze all in Freezer</string>
     <string name="shortcuts">Shortcuts</string>

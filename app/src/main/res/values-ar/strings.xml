@@ -621,6 +621,8 @@
     <string name="disable_shortcuts">تعطيل الاختصارات</string>
     <string name="disable_shortcuts_desc">إيقاف اختصارات المجمّد، بما فيها الاختصارات المثبّتة على الشاشة الرئيسية</string>
     <string name="shortcuts_disabled_message">الاختصارات معطّلة في Thor</string>
+    <string name="shortcut_freeze_profile">تجميد %1$s</string>
+    <string name="profile_no_apps_to_freeze">لا توجد تطبيقات لتجميدها في هذا الملف</string>
     <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>
     <string name="freeze_all_apps">تجميد الكل في المجمد</string>
     <string name="shortcuts">الاختصارات</string>

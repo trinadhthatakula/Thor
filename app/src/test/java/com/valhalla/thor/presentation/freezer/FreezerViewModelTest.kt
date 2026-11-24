@@ -7,6 +7,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
@@ -1219,6 +1220,13 @@ class FreezerViewModelTest {
             "and it was not quietly absorbed by the port instead",
             shortcuts.absorbedFailures.isEmpty()
         )
+    }
+
+    @Test
+    fun `pinning a profile uses its persistent id and display name`() = runTest {
+        viewModel().pinProfileShortcut(FreezeProfile(7, "Games", listOf("one.game")))
+        advanceUntilIdle()
+        assertEquals(listOf(7L to "Games"), shortcuts.pinnedProfiles)
     }
 
     /** And the single-shortcut path, where the throw has nowhere to go but the guard. */

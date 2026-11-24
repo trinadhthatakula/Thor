@@ -289,6 +289,8 @@
     <string name="disable_shortcuts">ショートカットを無効にする</string>
     <string name="disable_shortcuts_desc">ホーム画面に固定したものを含め、フリーザーのショートカットを無効にします</string>
     <string name="shortcuts_disabled_message">Thor でショートカットが無効になっています</string>
+    <string name="shortcut_freeze_profile">%1$s を凍結</string>
+    <string name="profile_no_apps_to_freeze">このプロファイルには凍結できるアプリがありません</string>
     <string name="add_to_home_screen">ホーム画面に追加</string>
     <string name="freeze_all_apps">フリーザー内のすべてのアプリを凍結</string>
     <string name="shortcuts">ショートカット</string>

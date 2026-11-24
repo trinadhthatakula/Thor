@@ -583,6 +583,8 @@
     <string name="disable_shortcuts">Désactiver les raccourcis</string>
     <string name="disable_shortcuts_desc">Désactive les raccourcis du Congélateur, y compris ceux épinglés sur l\'écran d\'accueil</string>
     <string name="shortcuts_disabled_message">Les raccourcis sont désactivés dans Thor</string>
+    <string name="shortcut_freeze_profile">Geler %1$s</string>
+    <string name="profile_no_apps_to_freeze">Aucune application à geler dans ce profil</string>
     <string name="add_to_home_screen">Ajouter à l\'écran d\'accueil</string>
     <string name="freeze_all_apps">Tout congeler dans le Congélateur</string>
     <string name="shortcuts">Raccourcis</string>
