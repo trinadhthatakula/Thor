@@ -12,6 +12,7 @@ import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import androidx.core.net.toUri
 import androidx.test.core.app.ApplicationProvider
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.repository.AppExportPublicationIdentity
 import com.valhalla.thor.domain.repository.AppExportPublicationReconciliation
@@ -82,31 +83,47 @@ class SafExportPublicationTest {
     @Test fun `failed cleanup is not success and never deletes a foreign final`() = runBlocking {
         provider.finalName = "collision (1).apk"
         provider.failDelete = true
-        provider.afterCreate = { provider.documents["foreign"] = identity.fileName }
+        provider.afterCreate = { provider.documents["foreign"] = "Example.apk" }
         assertFailsPublication()
         assertEquals(listOf("created"), provider.deleted)
         assertFalse(provider.deleted.contains("foreign"))
-        assertEquals(identity.fileName, provider.documents["foreign"])
+        assertEquals("Example.apk", provider.documents["foreign"])
     }
 
-    @Test fun `existing foreign final is never deleted or overwritten`() = runBlocking {
-        provider.documents["foreign"] = identity.fileName
-        assertFailsPublication()
-        assertFalse(provider.deleted.contains("foreign"))
-        assertEquals(identity.fileName, provider.documents["foreign"])
-    }
-
-    @Test fun `exact publication follows returned rename URI and is reusable`() = runBlocking {
-        store.publishPublicExport(source, target, "application/vnd.android.package-archive", identity, VerifiedProgress.NONE)
-        assertEquals(identity.fileName, provider.documents["renamed"])
+    @Test fun `readable name collision keeps the first file and verifies only the new file on replay`() = runBlocking {
+        provider.documents["foreign"] = "Example.apk"
+        var receipt: ExportPublicationReceipt? = null
+        store.publishPublicExport(source, target, "application/vnd.android.package-archive",
+            identity, VerifiedProgress.NONE, "Example.apk") { receipt = it }
+        assertEquals("Example (1).apk", provider.documents["renamed"])
+        assertEquals("Example.apk", provider.documents["foreign"])
         assertTrue(provider.deleted.isEmpty())
-        val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(ApplicationProvider.getApplicationContext(), target.treeUri.toUri())!!
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(target.treeUri.toUri(), "root")
-        ApplicationProvider.getApplicationContext<Application>().contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)!!.use { assertEquals(1, it.count) }
-        assertEquals(listOf(identity.fileName), tree.listFiles().map { it.name })
-        assertTrue("exact document must be a file", tree.listFiles().single().isFile)
-        assertTrue(store.reconcilePublicExport(target, identity) is AppExportPublicationReconciliation.Complete)
-        assertEquals(1, provider.opens)
+        val published = identity.copy(receipt = requireNotNull(receipt))
+        assertTrue(store.reconcilePublicExport(target, published) is AppExportPublicationReconciliation.Complete)
+        File(ApplicationProvider.getApplicationContext<Application>().cacheDir, "provider-renamed").writeText("different bytes")
+        assertEquals(AppExportPublicationReconciliation.Absent, store.reconcilePublicExport(target, published))
+    }
+
+    @Test fun `API 28 Downloads numbers repeated exports and keeps both payloads`() = runBlocking {
+        val downloads = ExportTargetChoice.Downloads
+        val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), THOR_DOWNLOADS_SUBDIR)
+        val receipts = mutableListOf<ExportPublicationReceipt>()
+        val preferred = "My_App_1.0.apk"
+        try {
+            repeat(2) { index ->
+                source.writeText("package $index")
+                store.publishPublicExport(source, downloads, "application/vnd.android.package-archive",
+                    identity, VerifiedProgress.NONE, preferred) { receipts += it }
+            }
+            assertEquals(listOf(preferred, "My_App_1.0 (1).apk"), receipts.map { it.fileName })
+            receipts.forEachIndexed { index, receipt ->
+                assertEquals("package $index", File(dir, receipt.fileName).readText())
+                assertTrue(store.reconcilePublicExport(downloads, identity.copy(receipt = receipt))
+                        is AppExportPublicationReconciliation.Complete)
+            }
+        } finally {
+            receipts.forEach { File(dir, it.fileName).delete() }
+        }
     }
 
     @Test fun `legacy writer retains provider normalized publication behavior`() = runBlocking {
@@ -236,7 +253,7 @@ class SafExportPublicationTest {
                 session: com.valhalla.thor.domain.usecase.ExportSession, publicationIdentity: AppExportPublicationIdentity?,
                 execution: com.valhalla.thor.domain.model.PrivilegeExecutionContext, captureProgress: VerifiedProgress,
                 captureBoundary: com.valhalla.thor.domain.repository.VerifiedOperationBoundary, publicationProgress: VerifiedProgress,
-                publicationStart: suspend () -> Unit) = com.valhalla.thor.domain.usecase.exportDurableBundle(
+                publicationStart: suspend (ExportPublicationReceipt?) -> Unit) = com.valhalla.thor.domain.usecase.exportDurableBundle(
                     builder, store, appInfo, format, session, requireNotNull(publicationIdentity), execution,
                     captureProgress, captureBoundary, VerifiedProgress { bytes ->
                         if (killDuringWrite) kill()
@@ -258,7 +275,7 @@ class SafExportPublicationTest {
 
     private suspend fun assertFailsPublication() {
         try {
-            store.publishPublicExport(source, target, "application/vnd.android.package-archive", identity, VerifiedProgress.NONE)
+            store.publishPublicExport(source, target, "application/vnd.android.package-archive", identity, VerifiedProgress.NONE, "Example.apk") {}
             fail("unproven publication must be refused")
         } catch (_: IOException) { }
     }
@@ -331,6 +348,8 @@ class ExportDocumentsProvider : android.content.ContentProvider() {
     }
     private fun renameDocument(documentId: String, displayName: String): String {
         sizes["renamed"] = File(requireNotNull(context).cacheDir, "provider-$documentId").length()
+        val cache = requireNotNull(context).cacheDir
+        File(cache, "provider-$documentId").copyTo(File(cache, "provider-renamed"), overwrite = true)
         documents.remove(documentId)
         documents["renamed"] = finalName ?: if (documents.values.contains(displayName)) "$displayName (1)" else displayName
         afterRename()
@@ -344,6 +363,9 @@ class ExportDocumentsProvider : android.content.ContentProvider() {
     }
     override fun openFile(uri: android.net.Uri, mode: String): ParcelFileDescriptor {
         val documentId = DocumentsContract.getDocumentId(uri)
+        if (mode == "r") {
+            return ParcelFileDescriptor.open(File(requireNotNull(context).cacheDir, "provider-$documentId"), ParcelFileDescriptor.MODE_READ_ONLY)
+        }
         opens++
         return ParcelFileDescriptor.open(File(requireNotNull(context).cacheDir, "provider-$documentId"),
             ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_TRUNCATE)

@@ -28,7 +28,7 @@ import androidx.sqlite.async.executeSQL
         DataTaskItemEntity::class,
         DataTaskOutputEntity::class,
     ],
-    version = 10,
+    version = 11,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
@@ -42,6 +42,7 @@ import androidx.sqlite.async.executeSQL
         AutoMigration(from = 6, to = 7),
         // 7 → 8 adds only the durable sweep request, target, and source-association tables.
         AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 10, to = 11),
     ],
     exportSchema = true,
 )

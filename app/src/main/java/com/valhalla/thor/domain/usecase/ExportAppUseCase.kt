@@ -6,8 +6,10 @@ package com.valhalla.thor.domain.usecase
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
+import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
@@ -139,7 +141,7 @@ class ExportAppUseCase(
         captureProgress: VerifiedProgress = VerifiedProgress.NONE,
         captureBoundary: VerifiedOperationBoundary = VerifiedOperationBoundary.NONE,
         publicationProgress: VerifiedProgress = VerifiedProgress.NONE,
-        publicationStart: suspend () -> Unit,
+        publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
     ): Result<AppExportPublication> = withContext(ioDispatcher) {
         exportDurableBundle(
             bundleBuilder = bundleBuilder,
@@ -210,7 +212,7 @@ internal suspend fun exportDurableBundle(
     captureProgress: VerifiedProgress,
     captureBoundary: VerifiedOperationBoundary,
     publicationProgress: VerifiedProgress,
-    publicationStart: suspend () -> Unit,
+    publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
 ): Result<AppExportPublication> {
     var staged: File? = null
     return try {
@@ -238,7 +240,7 @@ internal suspend fun exportDurableBundle(
                 ).getOrElse { return Result.failure(it) }
                 staged = file
                 // This durable boundary must commit before SAF create, not after the first copy.
-                publicationStart()
+                publicationStart(null)
                 Result.success(
                     fileStore.publishPublicExport(
                         file = file,
@@ -246,6 +248,8 @@ internal suspend fun exportDurableBundle(
                         mime = format.mime,
                         identity = publicationIdentity,
                         progress = publicationProgress,
+                        requestedName = bundleFileNameFor(appInfo, format),
+                        beforePublish = publicationStart,
                     )
                 )
             }

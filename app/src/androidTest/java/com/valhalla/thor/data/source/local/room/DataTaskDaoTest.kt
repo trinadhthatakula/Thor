@@ -29,6 +29,7 @@ import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
 import com.valhalla.thor.domain.model.DataTaskState
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.NewDataTaskOutput
 import com.valhalla.thor.domain.model.RestoreMutationBreadcrumb
 import com.valhalla.thor.domain.model.SharePrepareFormat
@@ -75,6 +76,19 @@ class DataTaskDaoTest {
     fun tearDown() {
         database.close()
         context.deleteDatabase(DATABASE_NAME)
+    }
+
+    @Test
+    fun exportReceiptSurvivesDatabaseReopenAndClaimRecovery() = runBlocking {
+        dao.insertTask(newExportTask(TASK_1))
+        dao.claimOldestRunnableWork("old-session", "old-task", "old-item", 2_000L, 3_000L)
+        val receipt = ExportPublicationReceipt("Example_1.0.apk", mediaStoreId = 41)
+        val publishing = checkpoint().copy(stage = DataTaskStage.PUBLISHING, exportReceipt = receipt)
+        assertTrue(dao.checkpointClaimedTask(TASK_1, "old-task", 0, "old-item", publishing, 3_000L) { 2_200L })
+        reopenDatabase()
+        dao.recoverClaims("new-session", 3_100L) { _, _ -> false }
+        val work = requireNotNull(dao.claimOldestRunnableWork("new-session", "new-task", "new-item", 3_200L, 4_200L))
+        assertEquals(receipt, work.task.lastCheckpoint?.exportReceipt)
     }
 
     @Test

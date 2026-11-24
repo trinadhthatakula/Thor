@@ -8,7 +8,7 @@ import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.data.backup.job.DataTaskSinkWrite
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppBundleBuilder
-import com.valhalla.thor.domain.repository.AppBundleFileStore
+import com.valhalla.thor.presentation.TestAppBundleFileStore
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
 import com.valhalla.thor.domain.usecase.BackupRunResult
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
@@ -298,7 +298,7 @@ private class FakeBuilder(
 
 private class RecordingStore(
     private val onWrite: (String) -> Unit = {},
-) : AppBundleFileStore {
+) : TestAppBundleFileStore {
     override suspend fun writeToDownloads(file: File, mime: String): String {
         onWrite(file.name)
         return "Downloads/Thor"

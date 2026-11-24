@@ -25,6 +25,7 @@ import com.valhalla.thor.domain.model.DataTaskKind
 import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskState
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.InstalledAppFacts
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
@@ -797,7 +798,7 @@ internal class RoomDataSyncCoordinatorRuntime(
                 captureProgress: VerifiedProgress,
                 captureBoundary: VerifiedOperationBoundary,
                 publicationProgress: VerifiedProgress,
-                publicationStart: suspend () -> Unit,
+                publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
             ): Result<AppExportPublication> = requireNotNull(publicationIdentity).let { identity ->
                 exportApp.exportDurableInto(
                     appInfo = appInfo,

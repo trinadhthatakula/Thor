@@ -84,10 +84,13 @@ private const val MAX_NAME_ATTEMPTS = 999
  * @return null when every candidate up to [MAX_NAME_ATTEMPTS] is taken. Null means "do not write",
  *   never "write over one of them".
  */
-internal fun nonCollidingArchiveName(fileName: String, taken: (String) -> Boolean): String? {
+internal fun nonCollidingArchiveName(
+    fileName: String,
+    extension: String = ".$THORBAK_EXTENSION",
+    taken: (String) -> Boolean,
+): String? {
     fun free(candidate: String) = !taken(candidate) && !taken(partialName(candidate))
     if (free(fileName)) return fileName
-    val extension = ".$THORBAK_EXTENSION"
     // `removeSuffix` on a name that does not carry it returns the name unchanged, which would then
     // have an extension appended that the caller never asked for.
     val stem = if (fileName.endsWith(extension)) fileName.removeSuffix(extension) else fileName

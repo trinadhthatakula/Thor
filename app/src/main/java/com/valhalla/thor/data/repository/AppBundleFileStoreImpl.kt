@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.repository
 
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -17,6 +18,7 @@ import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.AppExportPublication
@@ -39,6 +41,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.Files
+import java.security.DigestInputStream
+import java.security.MessageDigest
 
 private const val TAG = "AppBundleFileStore"
 
@@ -94,7 +99,7 @@ internal fun <T : Any> openExactPendingMediaStoreDestination(
     insertPending: () -> T?,
     assignedName: (T) -> String?,
     openOutput: (T) -> OutputStream?,
-    makeVisible: (T) -> Boolean,
+    makeVisible: (T) -> String?,
     removePending: (T) -> Unit,
 ): ArchiveDestination? {
     val pending = insertPending() ?: return null
@@ -105,8 +110,9 @@ internal fun <T : Any> openExactPendingMediaStoreDestination(
         destinationOpened = true
         return object : BaseDestination(stream, onSettled = {}) {
             override fun onPublish(): ArchivePublication? {
-                if (assignedName(pending) != identity.fileName || !makeVisible(pending)) return null
-                return ArchivePublication(identity.fileName, writtenBytes)
+                if (assignedName(pending) != identity.fileName) return null
+                val displayName = makeVisible(pending) ?: return null
+                return ArchivePublication(displayName, writtenBytes)
             }
 
             override fun onDiscard() = removePending(pending)
@@ -135,6 +141,16 @@ internal suspend fun copyWithVerifiedProgress(
     output.flush()
 }
 
+// bundleFileNameFor supplies an ASCII basename. Leave room for provider collision suffixes and
+// keep readable names outside the namespace older releases use as their publication proof.
+internal fun readableExportName(requestedName: String): String {
+    require(requestedName.matches(Regex("[A-Za-z0-9._-]*\\.(apk|apks|xapk)")))
+    val stem = requestedName.substringBeforeLast('.').trimStart('.').ifEmpty { "App" }
+    val prefix = if (stem.startsWith("Thor-task-", ignoreCase = true)) "_" else ""
+    val bounded = if (stem.length <= 220) stem else stem.take(150) + "_" + stem.takeLast(69)
+    return prefix + bounded + "." + requestedName.substringAfterLast('.')
+}
+
 private const val EXPORT_PUBLICATION_COPY_BUFFER_BYTES = 8192
 
 /**
@@ -155,9 +171,26 @@ class AppBundleFileStoreImpl(
         target: ExportTargetChoice,
         identity: AppExportPublicationIdentity,
     ): AppExportPublicationReconciliation = withContext(ioDispatcher) {
-        val complete = when (target) {
-            ExportTargetChoice.Downloads -> reconcileDownloads(identity)
-            is ExportTargetChoice.Custom -> reconcileTree(target.treeUri, identity)
+        val receipt = identity.receipt
+        val complete = when {
+            receipt == null -> when (target) {
+                ExportTargetChoice.Downloads -> reconcileDownloads(identity)
+                is ExportTargetChoice.Custom -> reconcileLegacyTree(target.treeUri, identity)
+            }
+            target is ExportTargetChoice.Custom -> {
+                val tree = target.treeUri.toUri()
+                val entry = treeEntries(tree).singleOrNull { it.displayName == receipt.fileName && it.isComplete }
+                entry != null && context.contentResolver.openInputStream(
+                    DocumentsContract.buildDocumentUriUsingTree(tree, entry.id)
+                )?.use { it.sha256Hex() } == requireNotNull(receipt.sha256)
+            }
+            receipt.mediaStoreId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                reconcileMediaStoreRow(receipt.mediaStoreId)
+            receipt.sha256 != null -> {
+                val file = File(legacyDownloadsDir(), receipt.fileName)
+                file.isFile && file.inputStream().use { it.sha256Hex() } == receipt.sha256
+            }
+            else -> throw IOException("Could not inspect export destination")
         }
         if (complete) {
             AppExportPublicationReconciliation.Complete(
@@ -177,22 +210,35 @@ class AppBundleFileStoreImpl(
         mime: String,
         identity: AppExportPublicationIdentity,
         progress: VerifiedProgress,
+        requestedName: String,
+        beforePublish: suspend (ExportPublicationReceipt) -> Unit,
     ): AppExportPublication = withContext(ioDispatcher) {
         require(file.name == identity.fileName)
-        val destination = when (target) {
-            ExportTargetChoice.Downloads ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    openExactInDownloads(identity, mime)
-                } else {
-                    openInLegacyDownloads(file)
-                }
-
-            is ExportTargetChoice.Custom -> {
-                val treeUri = target.treeUri.toUri()
-                openExactInTree(treeUri, identity.fileName, mime)
+        val preferred = readableExportName(requestedName)
+        var name = preferred
+        var mediaId: Long? = null
+        val extension = "." + preferred.substringAfterLast('.')
+        val destination = when {
+            target is ExportTargetChoice.Custom -> {
+                val tree = target.treeUri.toUri()
+                val taken = treeEntries(tree).mapTo(mutableSetOf()) { it.displayName.lowercase() }
+                name = nonCollidingArchiveName(preferred, extension) { it.lowercase() in taken }
+                    ?: throw IOException("No available export name")
+                openExactInTree(tree, identity.fileName, name, mime)
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                openExactInDownloads(identity, preferred, mime) { mediaId = ContentUris.parseId(it) }
+            else -> {
+                val dir = legacyDownloadsDir()
+                name = nonCollidingArchiveName(preferred, extension) { File(dir, it).exists() }
+                    ?: throw IOException("No available export name")
+                openInLegacyDownloads(file, finalName = name)
             }
         } ?: throw IOException("Could not create file")
-        destination.write(file, progress)
+        val digest = if (mediaId == null) MessageDigest.getInstance("SHA-256") else null
+        destination.write(file, progress, digest) {
+            beforePublish(ExportPublicationReceipt(name, digest?.digest()?.toLowercaseHex(), mediaId))
+        }
         AppExportPublication(
             destinationLabel = publicationLabel(target),
             status = AppExportPublicationStatus.PUBLISHED,
@@ -275,11 +321,7 @@ class AppBundleFileStoreImpl(
 
     private fun reconcileDownloads(identity: AppExportPublicationIdentity): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            @Suppress("DEPRECATION")
-            val dir = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                THOR_DOWNLOADS_SUBDIR,
-            )
+            val dir = legacyDownloadsDir()
             val partial = File(dir, partialName(identity.fileName))
             if (partial.exists() && !partial.delete()) {
                 throw IOException("Could not remove incomplete ${identity.fileName}")
@@ -293,8 +335,10 @@ class AppBundleFileStoreImpl(
     private fun reconcileMediaStoreDownloads(identity: AppExportPublicationIdentity): Boolean {
         val resolver = context.contentResolver
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/"
+        @Suppress("DEPRECATION") // setIncludePending also works on Android 10.
+        val collection = MediaStore.setIncludePending(MediaStore.Downloads.EXTERNAL_CONTENT_URI)
         val entries = resolver.query(
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            collection,
             arrayOf(
                 MediaStore.Downloads._ID,
                 MediaStore.Downloads.DISPLAY_NAME,
@@ -328,17 +372,23 @@ class AppBundleFileStoreImpl(
         } != null
     }
 
-    private fun reconcileTree(
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun reconcileMediaStoreRow(id: Long): Boolean {
+        val uri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+        val resolver = context.contentResolver
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/"
+        return resolver.query(uri, arrayOf(MediaStore.Downloads.RELATIVE_PATH, MediaStore.Downloads.IS_PENDING),
+            null, null, null)?.use { cursor ->
+            cursor.moveToFirst() && cursor.getString(0) == relativePath && cursor.getInt(1) == 0
+        } ?: throw IOException("Could not inspect export destination")
+    }
+
+    private fun reconcileLegacyTree(
         treeUriString: String,
         identity: AppExportPublicationIdentity,
     ): Boolean {
-        // SAF has no pending bit or durable returned-URI receipt. Exact final names are the only
-        // publication proof under the strict writer's ordering: no bytes before an exact partial
-        // name, and no rename until copying and stream close finish. Positive size is only a guard
-        // against create normalizing straight to final before that name check, not proof by itself.
-        // Providers must truthfully create a new empty document and report metadata; concurrent
-        // external replacement is not attributable without a durable receipt (which we do not have).
-        // Do not delete even a partial here: reconciliation is inspection, not guessed rollback.
+        // Releases before readable names published only under the task's UUID. They recorded
+        // no receipt. An exact, nonempty final is the recovery evidence for those tasks.
         return treeEntries(treeUriString.toUri()).count {
             it.displayName == identity.fileName && it.isComplete
         } == 1
@@ -359,10 +409,15 @@ class AppBundleFileStoreImpl(
     private suspend fun ArchiveDestination.write(
         source: File,
         progress: VerifiedProgress = VerifiedProgress.NONE,
+        digest: MessageDigest? = null,
+        beforePublish: suspend () -> Unit = {},
     ) {
         var publication: ArchivePublication? = null
         try {
-            source.inputStream().use { copyWithVerifiedProgress(it, output, progress) }
+            source.inputStream().use { input ->
+                copyWithVerifiedProgress(if (digest == null) input else DigestInputStream(input, digest), output, progress)
+            }
+            beforePublish()
             publication = publish()
         } finally {
             discard()
@@ -406,13 +461,13 @@ class AppBundleFileStoreImpl(
      * PUBLISHING fence before entering here: a process death can lose either returned URI, so name
      * enforcement alone cannot authorize replay. Cleanup uses only a positively returned identity.
      */
-    private fun openExactInTree(treeUri: Uri, fileName: String, mime: String): ArchiveDestination? {
+    private fun openExactInTree(treeUri: Uri, operationName: String, fileName: String, mime: String): ArchiveDestination? {
         if (treeEntries(treeUri).any { it.displayName == fileName }) return null
         val resolver = context.contentResolver
         val parent = DocumentsContract.buildDocumentUriUsingTree(
             treeUri, DocumentsContract.getTreeDocumentId(treeUri),
         )
-        val partial = DocumentsContract.createDocument(resolver, parent, mime, partialName(fileName))
+        val partial = DocumentsContract.createDocument(resolver, parent, mime, partialName(operationName))
             ?: return null
         var ownedUri: Uri? = partial
         var opened = false
@@ -424,13 +479,13 @@ class AppBundleFileStoreImpl(
             }
         }
         try {
-            if (displayNameOf(resolver, partial) != partialName(fileName) ||
+            if (displayNameOf(resolver, partial) != partialName(operationName) ||
                 renameKnownUnsupported(resolver, partial)) return null
             val stream = resolver.openOutputStream(partial) ?: return null
             opened = true
             return object : BaseDestination(stream, onSettled = {}) {
                 override fun onPublish(): ArchivePublication? {
-                    if (displayNameOf(resolver, partial) != partialName(fileName) ||
+                    if (displayNameOf(resolver, partial) != partialName(operationName) ||
                         treeEntries(treeUri).any { it.displayName == fileName }) return null
                     // If rename throws or returns no URI, its side effect is unknown. Do not guess
                     // that the old URI still identifies our document after a provider-side rename.
@@ -551,14 +606,15 @@ class AppBundleFileStoreImpl(
     /**
      * Q+ durable Downloads: reject a collision-assigned row while it is still pending and empty.
      *
-     * Reconciliation recognizes only [identity]'s exact name. MediaStore may assign a suffix between
-     * that check and this insert, so both name checks happen before visibility and a mismatch is
-     * deleted rather than becoming an orphan replay cannot identify.
+     * Until the receipt is committed, a retry can clean up only the exact task-owned pending name.
+     * Once committed, the row ID identifies the result even if MediaStore numbers its display name.
      */
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun openExactInDownloads(
         identity: AppExportPublicationIdentity,
+        preferredName: String,
         mime: String,
+        onInserted: (Uri) -> Unit,
     ): ArchiveDestination? {
         val resolver = context.contentResolver
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$THOR_DOWNLOADS_SUBDIR/"
@@ -573,17 +629,21 @@ class AppBundleFileStoreImpl(
                         MediaStore.Downloads.RELATIVE_PATH to relativePath,
                         MediaStore.Downloads.IS_PENDING to 1,
                     ),
-                )
+                )?.also(onInserted)
             },
             assignedName = { uri -> displayNameOf(resolver, uri) },
             openOutput = resolver::openOutputStream,
             makeVisible = { uri ->
-                resolver.update(
+                val published = resolver.update(
                     uri,
-                    contentValuesOf(MediaStore.Downloads.IS_PENDING to 0),
+                    contentValuesOf(
+                        MediaStore.Downloads.DISPLAY_NAME to preferredName,
+                        MediaStore.Downloads.IS_PENDING to 0,
+                    ),
                     null,
                     null,
                 ) == 1
+                if (published) displayNameOf(resolver, uri) ?: preferredName else null
             },
             removePending = { uri -> resolver.delete(uri, null, null) },
         )
@@ -718,6 +778,12 @@ class AppBundleFileStoreImpl(
         null
     }
 
+    @Suppress("DEPRECATION")
+    private fun legacyDownloadsDir() = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        THOR_DOWNLOADS_SUBDIR,
+    )
+
     /**
      * API 28 Downloads: write `<name>.part`, then `renameTo` over the file being replaced.
      *
@@ -726,19 +792,18 @@ class AppBundleFileStoreImpl(
      * a cancelled or killed export left a **truncated `.apk` under the right name**: the one failure
      * shape a user cannot tell from a good export.
      */
-    private fun openInLegacyDownloads(source: File): ArchiveDestination? {
-        @Suppress("DEPRECATION")
-        val dir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            THOR_DOWNLOADS_SUBDIR,
-        )
+    private fun openInLegacyDownloads(source: File, finalName: String? = null): ArchiveDestination? {
+        val dir = legacyDownloadsDir()
         if (!dir.isDirectory && !dir.mkdirs()) return null
         val partial = File(dir, partialName(source.name))
-        val published = File(dir, source.name)
+        val published = File(dir, finalName ?: source.name)
         val stream = FileOutputStream(partial)
         return object : BaseDestination(stream, onSettled = {}) {
             override fun onPublish(): ArchivePublication? =
-                if (partial.renameTo(published)) {
+                if (finalName != null) {
+                    Files.move(partial.toPath(), published.toPath())
+                    ArchivePublication(published.name, writtenBytes)
+                } else if (partial.renameTo(published)) {
                     ArchivePublication(published.name, writtenBytes)
                 } else {
                     null

@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.DataTaskOutputState
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.DataTaskStage
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.repository.AppExportPublication
@@ -488,7 +489,7 @@ class AppExportTaskRunnerTest {
             captureProgress: VerifiedProgress,
             captureBoundary: VerifiedOperationBoundary,
             publicationProgress: VerifiedProgress,
-            publicationStart: suspend () -> Unit,
+            publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
         ): Result<AppExportPublication> {
             exports += ExportCall(session, publicationIdentity, execution)
             progressScript(captureProgress, captureBoundary, publicationProgress)

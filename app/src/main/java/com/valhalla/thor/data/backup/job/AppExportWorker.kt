@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.model.DataTaskResultCode
 import com.valhalla.thor.domain.model.DataTaskRunOutcome
 import com.valhalla.thor.domain.model.EXPORT_LABEL_KEY
 import com.valhalla.thor.domain.model.EXPORT_TREE_KEY
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.PrivilegeExecutionContext
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
@@ -137,7 +138,7 @@ internal class AppExportWorker(
                     captureProgress: VerifiedProgress,
                     captureBoundary: VerifiedOperationBoundary,
                     publicationProgress: VerifiedProgress,
-                    publicationStart: suspend () -> Unit,
+                    publicationStart: suspend (ExportPublicationReceipt?) -> Unit,
                 ): KotlinResult<AppExportPublication> {
                     val result = if (publicationIdentity == null) {
                         exportApp.exportInto(

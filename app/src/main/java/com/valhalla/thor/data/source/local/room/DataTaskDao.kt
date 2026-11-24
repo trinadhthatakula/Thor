@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.model.DataTaskItemResult
 import com.valhalla.thor.domain.model.DataTaskItemState
 import com.valhalla.thor.domain.model.DataTaskItemTerminalState
 import com.valhalla.thor.domain.model.DataTaskKind
+import com.valhalla.thor.domain.model.ExportPublicationReceipt
 import com.valhalla.thor.domain.model.MAX_TASK_WARNING_COUNT
 import com.valhalla.thor.domain.model.DataTaskOutputState
 import com.valhalla.thor.domain.model.DataTaskPublicationPolicy
@@ -704,6 +705,11 @@ abstract class DataTaskDao {
                 leaseUntilMs,
             ) == 1
         ) { "item claim changed inside checkpoint transaction" }
+        val receipt = checkpoint.exportReceipt
+        if (receipt != null || (kind == DataTaskKind.APP_EXPORT && checkpoint.stage == DataTaskStage.PREPARING)) {
+            require(receipt == null || (kind == DataTaskKind.APP_EXPORT && checkpoint.stage == DataTaskStage.PUBLISHING))
+            check(recordExportReceipt(taskId, itemOrdinal, receipt?.fileName, receipt?.sha256, receipt?.mediaStoreId) == 1)
+        }
         if (checkpoint.destructiveStarted || checkpoint.restoreMutationBreadcrumb != null) {
             val breadcrumb = checkpoint.restoreMutationBreadcrumb
             check(
@@ -1314,6 +1320,12 @@ abstract class DataTaskDao {
 
     @Insert
     protected abstract suspend fun insertArchiveDetail(entity: ArchiveTaskDetailEntity)
+
+    @Query("""UPDATE data_task_items SET publication_name = :name,
+        publication_sha256 = :sha256, publication_media_id = :mediaId WHERE task_id = :taskId AND ordinal = :ordinal""")
+    protected abstract suspend fun recordExportReceipt(
+        taskId: String, ordinal: Int, name: String?, sha256: String?, mediaId: Long?,
+    ): Int
 
     @Insert
     protected abstract suspend fun insertExportDetail(entity: ExportTaskDetailEntity)
@@ -2333,6 +2345,9 @@ abstract class DataTaskDao {
                     destructiveStarted = archive?.destructiveStarted == true,
                     restoreMutationBreadcrumb = archive?.toBreadcrumb(),
                     recordedAtEpochMs = task.updatedAtEpochMs,
+                    exportReceipt = activeItem?.publicationName?.let { name ->
+                        ExportPublicationReceipt(name, activeItem.publicationSha256, activeItem.publicationMediaId)
+                    },
                 )
             },
         )
