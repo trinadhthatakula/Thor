@@ -8,7 +8,10 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import com.valhalla.thor.R
+import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.domain.model.FreezeProfileIcon
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -35,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class FreezerShortcutPinnedReceiver : BroadcastReceiver(), KoinComponent {
     private val shortcutManager: FreezerShortcutManager by inject()
+    private val profiles: FreezeProfileRepository by inject()
 
     override fun onReceive(context: Context, intent: Intent) {
         val localised = AppLocale.wrap(context)
@@ -52,6 +56,12 @@ class FreezerShortcutPinnedReceiver : BroadcastReceiver(), KoinComponent {
         }
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val profileId = intent.getLongExtra(FreezerShortcutContract.EXTRA_PROFILE_ID, 0L)
+                val previous = FreezeProfileIcon.fromKey(intent.getStringExtra(FreezerShortcutContract.EXTRA_PREVIOUS_ICON))
+                val selected = FreezeProfileIcon.fromKey(intent.getStringExtra(FreezerShortcutContract.EXTRA_PROFILE_ICON))
+                if (profileId > 0 && previous != null && selected != null && selected != previous) {
+                    profiles.changeIconIfCurrent(profileId, previous, selected)
+                }
                 val allowed = shortcutManager.reconcilePinnedShortcutAfterPin()
                 val message = if (!allowed) {
                     localised.getString(R.string.shortcuts_disabled_message)

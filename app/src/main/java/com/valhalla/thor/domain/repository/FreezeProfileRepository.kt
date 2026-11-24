@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.MissingFreezeProfilesException
 import com.valhalla.thor.domain.model.ProfileAssignmentResult
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +24,7 @@ interface FreezeProfileRepository {
     suspend fun allProfilePackageNames(): Set<String>
 
     /** @return the new profile's id. */
-    suspend fun create(name: String, packageNames: List<String>): Long
+    suspend fun create(name: String, packageNames: List<String>, icon: FreezeProfileIcon = FreezeProfileIcon.FREEZER): Long
 
     /**
      * Apply an editor save — name and membership together.
@@ -32,7 +33,7 @@ interface FreezeProfileRepository {
      * rename is the half that can fail on the unique-name index; splitting them would let a
      * rejected rename ship the membership change anyway.
      */
-    suspend fun update(profileId: Long, name: String, packageNames: List<String>)
+    suspend fun update(profileId: Long, name: String, packageNames: List<String>, icon: FreezeProfileIcon? = null)
 
     /**
      * Append each package to every selected existing profile, retaining names and other members.
@@ -49,6 +50,9 @@ interface FreezeProfileRepository {
         packageNames: Set<String>,
         addToFreezer: Boolean = false,
     ): ProfileAssignmentResult
+
+    /** Returns false if the profile disappeared or its icon changed before confirmation. */
+    suspend fun changeIconIfCurrent(profileId: Long, expected: FreezeProfileIcon, icon: FreezeProfileIcon): Boolean
 
     suspend fun delete(profileId: Long)
 }

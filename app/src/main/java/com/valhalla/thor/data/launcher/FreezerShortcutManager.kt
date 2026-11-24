@@ -15,6 +15,7 @@ import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.os.PersistableBundle
 import androidx.core.content.ContextCompat
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
@@ -24,6 +25,8 @@ import androidx.core.graphics.drawable.toBitmap
 import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.AppFreezeStateReader
 import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
+import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
@@ -181,11 +184,21 @@ class FreezerShortcutManager(
         }
     }
 
-    override fun pinProfileShortcut(profileId: Long, name: String) {
-        val shortcut = profileShortcut(profileId, name)
+    override fun isProfileShortcutPinned(profileId: Long): Boolean =
+        FreezerShortcutContract.profileShortcutId(profileId) in pinnedShortcutIds()
+
+    override fun pinProfileShortcut(profile: FreezeProfile, icon: FreezeProfileIcon) {
+        val shortcut = profileShortcut(profile.id, profile.name, icon)
         synchronized(shortcutSyncLock) {
             if (!shortcutsEnabled) return
-            ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(name).intentSender)
+            val callback = pinnedCallback(profile.name) {
+                // Extras alone do not distinguish PendingIntents for overlapping launcher prompts.
+                action = "com.valhalla.thor.PROFILE_PIN.${profile.id}.${profile.icon.key}.${icon.key}"
+                putExtra(FreezerShortcutContract.EXTRA_PROFILE_ID, profile.id)
+                putExtra(FreezerShortcutContract.EXTRA_PREVIOUS_ICON, profile.icon.key)
+                putExtra(FreezerShortcutContract.EXTRA_PROFILE_ICON, icon.key)
+            }
+            ShortcutManagerCompat.requestPinShortcut(context, shortcut, callback.intentSender)
         }
     }
 
@@ -205,10 +218,11 @@ class FreezerShortcutManager(
                         val profile = profiles[profileId]
                         if (profile == null) {
                             deleted += pin.id
-                        } else if (pin.shortLabel.toString() != profile.name ||
+                        } else if (pin.extras?.getString(FreezerShortcutContract.EXTRA_PROFILE_ICON) != profile.icon.key ||
+                            pin.shortLabel.toString() != profile.name ||
                             pin.longLabel.toString() != context.getString(R.string.shortcut_freeze_profile, profile.name)
                         ) {
-                            updates += profileShortcut(profile.id, profile.name)
+                            updates += profileShortcut(profile.id, profile.name, profile.icon)
                         }
                     }
                     if (updates.isNotEmpty()) pushShortcutUpdate(updates)
@@ -406,11 +420,12 @@ class FreezerShortcutManager(
             .build()
     }
 
-    private fun profileShortcut(profileId: Long, name: String): ShortcutInfoCompat =
+    private fun profileShortcut(profileId: Long, name: String, icon: FreezeProfileIcon): ShortcutInfoCompat =
         ShortcutInfoCompat.Builder(context, FreezerShortcutContract.profileShortcutId(profileId))
             .setShortLabel(name)
             .setLongLabel(context.getString(R.string.shortcut_freeze_profile, name))
-            .setIcon(bulkIcon(R.drawable.frozen, freezeShortcutBg))
+            .setIcon(bulkIcon(icon.drawable, ContextCompat.getColor(context, icon.background), tint = null))
+            .setExtras(PersistableBundle().apply { putString(FreezerShortcutContract.EXTRA_PROFILE_ICON, icon.key) })
             .setIntent(
                 trampolineIntent(FreezerShortcutContract.ACTION_FREEZE_PROFILE)
                     .putExtra(FreezerShortcutContract.EXTRA_PROFILE_ID, profileId)
@@ -422,14 +437,14 @@ class FreezerShortcutManager(
     // A launcher-visible adaptive icon: the white-tinted glyph centred on a solid colour tile. The raw
     // frozen/unfreeze vectors are white-on-transparent (meant to be tinted by the host), so passing them
     // to createWithResource renders an invisible/white blob on the launcher — hence this composed bitmap.
-    private fun bulkIcon(iconRes: Int, backgroundColor: Int): IconCompat {
+    private fun bulkIcon(iconRes: Int, backgroundColor: Int, tint: Int? = Color.WHITE): IconCompat {
         val size = 216
         val bitmap = createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(backgroundColor)
         try {
             ContextCompat.getDrawable(context, iconRes)?.mutate()?.apply {
-                setTint(Color.WHITE)
+                tint?.let(::setTint)
                 val inset = size / 4 // glyph fills the centre ~50%, within the adaptive safe zone
                 setBounds(inset, inset, size - inset, size - inset)
                 draw(canvas)
@@ -443,9 +458,10 @@ class FreezerShortcutManager(
 
     // Fires (broadcast) ONLY when the launcher actually pins the shortcut — Android provides no
     // failure/cancel callback, so this confirms success and can't detect a user cancel.
-    private fun pinnedCallback(label: String): PendingIntent {
+    private fun pinnedCallback(label: String, configure: Intent.() -> Unit = {}): PendingIntent {
         val intent = Intent(context, FreezerShortcutPinnedReceiver::class.java)
             .putExtra(FreezerShortcutPinnedReceiver.EXTRA_LABEL, label)
+            .apply(configure)
         return PendingIntent.getBroadcast(
             context,
             label.hashCode(),

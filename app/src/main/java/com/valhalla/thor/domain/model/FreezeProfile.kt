@@ -16,6 +16,7 @@ data class FreezeProfile(
     val id: Long,
     val name: String,
     val packageNames: List<String>,
+    val icon: FreezeProfileIcon = FreezeProfileIcon.FREEZER,
 ) {
     val size: Int get() = packageNames.size
 }

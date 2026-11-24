@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.FreezerEntity
 import com.valhalla.thor.domain.model.MissingFreezeProfilesException
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.ProfileAssignmentCount
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -49,7 +50,7 @@ class FreezeProfileRepositoryAssignmentTest {
         val second = repository.create("Travel", listOf("com.example.maps"))
         val other = repository.create("Work", listOf("com.example.work"))
         // The picker may have observed the old name; success reports the current stored name.
-        database.freezeProfileDao().renameProfile(first, "Current games")
+        database.freezeProfileDao().updateDetails(first, "Current games", null)
         val metadata = database.freezeProfileDao().profilesByIds(listOf(first, second, other))
 
         val result = repository.addApps(setOf(second, first), setOf("com.example.new", "android"))
@@ -69,6 +70,25 @@ class FreezeProfileRepositoryAssignmentTest {
         assertEquals(metadata, database.freezeProfileDao().profilesByIds(listOf(first, second, other)))
         assertEquals(0, result.freezerAddedCount)
         assertTrue(database.freezerDao().getAllPackageNames().isEmpty())
+    }
+
+    @Test
+    fun `profile edits and confirmed pins preserve current membership and newer icon choices`() = runTest {
+        val id = repository.create("Games", listOf("com.example.old"), FreezeProfileIcon.GAMES)
+        suspend fun profile() = repository.observeProfiles().first().single()
+        assertEquals(FreezeProfileIcon.GAMES, profile().icon)
+        repository.update(id, "Work", listOf("com.example.work"), FreezeProfileIcon.OFFICE)
+
+        repository.changeIconIfCurrent(id, FreezeProfileIcon.GAMES, FreezeProfileIcon.MUSIC)
+        assertEquals(FreezeProfileIcon.OFFICE, profile().icon)
+        repository.changeIconIfCurrent(id, FreezeProfileIcon.OFFICE, FreezeProfileIcon.KIDS)
+        assertEquals(FreezeProfileIcon.KIDS, profile().icon)
+        assertEquals("Work", profile().name)
+        assertEquals(listOf("com.example.work"), profile().packageNames)
+
+        repository.delete(id)
+        repository.changeIconIfCurrent(id, FreezeProfileIcon.KIDS, FreezeProfileIcon.SOCIAL)
+        assertTrue(repository.observeProfiles().first().isEmpty())
     }
 
     @Test

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -56,6 +57,7 @@ import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.ProfileNameError
 import com.valhalla.thor.domain.model.freezeTier
@@ -92,12 +94,13 @@ fun FreezeProfileEditorSheet(
     gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     onSearchChange: (String) -> Unit,
     isSaving: Boolean = false,
-    onSave: (name: String, packageNames: List<String>) -> Unit,
+    onSave: (name: String, packageNames: List<String>, icon: FreezeProfileIcon) -> Unit,
     onDismiss: () -> Unit
 ) {
     // Keyed on the profile id so reusing this composable for a different row restarts the edit
     // rather than carrying the previous profile's name and ticks into it. The id, not the
     // profile: a save that re-emits the list must not throw away the edit in progress.
+    var icon by rememberSaveable(profile?.id) { mutableStateOf(profile?.icon ?: FreezeProfileIcon.FREEZER) }
     var name by rememberSaveable(profile?.id) { mutableStateOf(profile?.name.orEmpty()) }
     var selection by rememberSaveable(
         profile?.id,
@@ -164,82 +167,12 @@ fun FreezeProfileEditorSheet(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    onClick = { if (!isSaving) onSave(name, selection.toList()) },
+                    onClick = { if (!isSaving) onSave(name, selection.toList(), icon) },
                     enabled = nameError == ProfileNameError.OK && !isSaving
                 ) {
                     Text(stringResource(R.string.action_save))
                 }
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                enabled = !isSaving,
-                singleLine = true,
-                label = { Text(stringResource(R.string.profile_name_label)) },
-                isError = name.isNotEmpty() && nameError != ProfileNameError.OK,
-                supportingText = {
-                    // BLANK is not shown as an error: an untouched field is not a mistake yet,
-                    // and Save is already disabled. The other two are things the user has to be
-                    // told, because both are silent rejections otherwise.
-                    when (nameError) {
-                        ProfileNameError.TOO_LONG ->
-                            Text(stringResource(R.string.profile_name_too_long))
-
-                        ProfileNameError.DUPLICATE ->
-                            Text(stringResource(R.string.profile_name_duplicate))
-
-                        else -> {}
-                    }
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .onFocusChanged { if (it.hasFocus) coroutineScope.launch { sheetState.expand() } }
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.selected_count, selection.size),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                ConnectedButtonGroup(
-                    items = AppListType.individualTypes.map { type ->
-                        ConnectedButtonGroupItem.Icon(
-                            icon = ImageVector.vectorResource(
-                                if (type == AppListType.USER) R.drawable.apps else R.drawable.android
-                            ),
-                            contentDescription = stringResource(
-                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
-                            )
-                        )
-                    },
-                    selectedIndex = AppListType.individualTypes.indexOf(selectedType),
-                    onItemSelected = { if (!isSaving) selectedType = AppListType.individualTypes[it] },
-                    modifier = Modifier.width(IntrinsicSize.Max)
-                )
-            }
-
-            AppSearchBar(
-                query = searchQuery,
-                onQueryChange = { if (!isSaving) onSearchChange(it) },
-                modifier = Modifier.onFocusChanged {
-                    if (it.hasFocus) coroutineScope.launch { sheetState.expand() }
-                }
-            )
-            Spacer(Modifier.height(4.dp))
         }
 
         val metrics = gridMetricsFor(gridDensity)
@@ -247,6 +180,85 @@ fun FreezeProfileEditorSheet(
             columns = GridCells.Adaptive(minSize = metrics.minCellSize),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
         ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        enabled = !isSaving,
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.profile_name_label)) },
+                        isError = name.isNotEmpty() && nameError != ProfileNameError.OK,
+                        supportingText = {
+                            // BLANK is not shown as an error: an untouched field is not a mistake yet,
+                            // and Save is already disabled. The other two are things the user has to be
+                            // told, because both are silent rejections otherwise.
+                            when (nameError) {
+                                ProfileNameError.TOO_LONG ->
+                                    Text(stringResource(R.string.profile_name_too_long))
+
+                                ProfileNameError.DUPLICATE ->
+                                    Text(stringResource(R.string.profile_name_duplicate))
+
+                                else -> {}
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                            .onFocusChanged { if (it.hasFocus) coroutineScope.launch { sheetState.expand() } }
+                    )
+
+                    ProfileIconPicker(
+                        selected = icon,
+                        onSelect = { icon = it },
+                        enabled = !isSaving,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.selected_count, selection.size),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        ConnectedButtonGroup(
+                            items = AppListType.individualTypes.map { type ->
+                                ConnectedButtonGroupItem.Icon(
+                                    icon = ImageVector.vectorResource(
+                                        if (type == AppListType.USER) R.drawable.apps else R.drawable.android
+                                    ),
+                                    contentDescription = stringResource(
+                                        if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                                    )
+                                )
+                            },
+                            selectedIndex = AppListType.individualTypes.indexOf(selectedType),
+                            onItemSelected = { if (!isSaving) selectedType = AppListType.individualTypes[it] },
+                            modifier = Modifier.width(IntrinsicSize.Max)
+                        )
+                    }
+
+                    AppSearchBar(
+                        query = searchQuery,
+                        onQueryChange = { if (!isSaving) onSearchChange(it) },
+                        modifier = Modifier.onFocusChanged {
+                            if (it.hasFocus) coroutineScope.launch { sheetState.expand() }
+                        }
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
             items(filtered.sortedBy { it.appName }, key = { it.packageName }) { app ->
                 val picked = app.packageName in selection
                 FreezerAppPickerItem(

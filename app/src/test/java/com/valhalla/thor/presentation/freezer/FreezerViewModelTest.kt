@@ -8,6 +8,7 @@ import com.valhalla.thor.data.privilege.DefaultPackageOperationCoordinator
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchRejection
 import com.valhalla.thor.domain.model.PrivilegeSweepLaunchResult
@@ -1224,9 +1225,20 @@ class FreezerViewModelTest {
 
     @Test
     fun `pinning a profile uses its persistent id and display name`() = runTest {
-        viewModel().pinProfileShortcut(FreezeProfile(7, "Games", listOf("one.game")))
+        val profile = FreezeProfile(7, "Games", listOf("one.game"))
+        viewModel().pinProfileShortcut(profile, FreezeProfileIcon.GAMES, alreadyPinned = false)
         advanceUntilIdle()
-        assertEquals(listOf(7L to "Games"), shortcuts.pinnedProfiles)
+        assertEquals(listOf(profile to FreezeProfileIcon.GAMES), shortcuts.pinnedProfiles)
+    }
+
+    @Test
+    fun `changing an existing pin updates its profile without requesting another pin`() = runTest {
+        val id = profiles.create("Games", listOf("one.game"))
+        val profile = FreezeProfile(id, "Games", listOf("one.game"))
+        viewModel().pinProfileShortcut(profile, FreezeProfileIcon.KIDS, alreadyPinned = true)
+        advanceUntilIdle()
+        assertEquals(FreezeProfileIcon.KIDS, profiles.observeProfiles().first().single().icon)
+        assertTrue(shortcuts.pinnedProfiles.isEmpty())
     }
 
     /** And the single-shortcut path, where the throw has nowhere to go but the guard. */

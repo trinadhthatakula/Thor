@@ -20,6 +20,7 @@ import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
@@ -58,6 +59,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
 import java.util.UUID
@@ -80,6 +82,7 @@ private sealed interface ProfileRemoval {
         override val profileId: Long,
         val name: String,
         val packageNames: List<String>,
+        val icon: FreezeProfileIcon?,
     ) : ProfileRemoval
 
     data class Delete(override val profileId: Long) : ProfileRemoval
@@ -512,17 +515,23 @@ class FreezerViewModel(
         )
     }
 
-    fun createProfile(editorSession: Int, name: String, packageNames: List<String>) {
-        saveProfile(editorSession) { freezeProfileRepository.create(name, packageNames) }
+    fun createProfile(
+        editorSession: Int,
+        name: String,
+        packageNames: List<String>,
+        icon: FreezeProfileIcon = FreezeProfileIcon.FREEZER,
+    ) {
+        saveProfile(editorSession) { freezeProfileRepository.create(name, packageNames, icon) }
     }
 
     fun updateProfile(
         editorSession: Int,
         profileId: Long,
         name: String,
-        packageNames: List<String>
+        packageNames: List<String>,
+        icon: FreezeProfileIcon? = null,
     ) {
-        beginProfileRemoval(ProfileRemoval.Update(editorSession, profileId, name, packageNames.toList()))
+        beginProfileRemoval(ProfileRemoval.Update(editorSession, profileId, name, packageNames.toList(), icon))
     }
 
     /**
@@ -649,7 +658,7 @@ class FreezerViewModel(
                         R.string.error_profile_name_taken, R.string.profile_removal_write_failed,
                         onFailure = { showProfileRemovalError(it) },
                     ) {
-                        freezeProfileRepository.update(removal.profileId, removal.name, removal.packageNames)
+                        freezeProfileRepository.update(removal.profileId, removal.name, removal.packageNames, removal.icon)
                     }
                     is ProfileRemoval.Delete -> runProfileWrite(
                         R.string.error_profile_delete_failed, R.string.profile_removal_write_failed,
@@ -1097,8 +1106,28 @@ class FreezerViewModel(
         }
     }
 
-    fun pinProfileShortcut(profile: FreezeProfile) {
-        launchPin(profile.name) { appShortcuts.pinProfileShortcut(profile.id, profile.name) }
+    suspend fun isProfileShortcutPinned(profileId: Long): Boolean? = try {
+        withContext(ioDispatcher) { appShortcuts.isProfileShortcutPinned(profileId) }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        tryEmitToast(error.asUiText())
+        null
+    }
+
+    fun pinProfileShortcut(profile: FreezeProfile, icon: FreezeProfileIcon, alreadyPinned: Boolean) {
+        launchPin(profile.name) {
+            if (alreadyPinned && icon != profile.icon) {
+                // Android may send a success callback immediately for an existing pin. This is
+                // an explicit update in Thor, with no second launcher confirmation to cancel.
+                val saved = freezeProfileRepository.changeIconIfCurrent(profile.id, profile.icon, icon)
+                appShortcuts.syncProfileShortcuts()
+                val message = if (saved) R.string.profile_saved else R.string.profile_removal_write_failed
+                emitToast(UiText.StringResource(message), isSuccess = saved)
+            } else {
+                appShortcuts.pinProfileShortcut(profile, icon)
+            }
+        }
     }
 
     fun pinBulkShortcut(freeze: Boolean) {

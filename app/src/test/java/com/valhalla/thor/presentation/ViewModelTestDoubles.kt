@@ -25,6 +25,7 @@ import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FontPreset
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezeProfileIcon
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.MissingFreezeProfilesException
@@ -501,18 +502,24 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     override suspend fun allProfilePackageNames(): Set<String> =
         profiles.value.flatMap { it.packageNames }.toSet()
 
-    override suspend fun create(name: String, packageNames: List<String>): Long {
+    override suspend fun create(name: String, packageNames: List<String>, icon: FreezeProfileIcon): Long {
         writeFailure?.let { throw it }
         val id = nextId++
-        profiles.update { it + FreezeProfile(id, name, packageNames) }
+        profiles.update { it + FreezeProfile(id, name, packageNames, icon) }
         return id
     }
 
-    override suspend fun update(profileId: Long, name: String, packageNames: List<String>) {
+    override suspend fun update(profileId: Long, name: String, packageNames: List<String>, icon: FreezeProfileIcon?) {
         writeFailure?.let { throw it }
         profiles.update { list ->
-            list.map { if (it.id == profileId) FreezeProfile(profileId, name, packageNames) else it }
+            list.map { if (it.id == profileId) it.copy(name = name, packageNames = packageNames, icon = icon ?: it.icon) else it }
         }
+    }
+
+    override suspend fun changeIconIfCurrent(profileId: Long, expected: FreezeProfileIcon, icon: FreezeProfileIcon): Boolean {
+        if (profiles.value.none { it.id == profileId && it.icon == expected }) return false
+        profiles.update { rows -> rows.map { if (it.id == profileId) it.copy(icon = icon) else it } }
+        return true
     }
 
     override suspend fun delete(profileId: Long) {
@@ -1168,7 +1175,7 @@ class FakeAppShortcutController(
     val disabled = mutableListOf<String>()
     val refreshed = mutableListOf<String>()
     val pinned = mutableListOf<String>()
-    val pinnedProfiles = mutableListOf<Pair<Long, String>>()
+    val pinnedProfiles = mutableListOf<Pair<FreezeProfile, FreezeProfileIcon>>()
     val pinnedBulkActions = mutableListOf<String>()
     val shortcutSyncs = mutableListOf<Boolean>()
 
@@ -1268,8 +1275,10 @@ class FakeAppShortcutController(
 
     override fun syncProfileShortcuts() = Unit
 
-    override fun pinProfileShortcut(profileId: Long, name: String) {
-        pinnedProfiles += profileId to name
+    override fun isProfileShortcutPinned(profileId: Long) = pinnedProfiles.any { it.first.id == profileId }
+
+    override fun pinProfileShortcut(profile: FreezeProfile, icon: FreezeProfileIcon) {
+        pinnedProfiles += profile to icon
     }
 
     override fun pinBulkShortcut(action: String) {

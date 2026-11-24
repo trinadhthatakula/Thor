@@ -574,6 +574,17 @@
     <string name="disable_shortcuts">停用快捷方式</string>
     <string name="disable_shortcuts_desc">停用冻结室快捷方式，包括已固定到主屏幕的快捷方式</string>
     <string name="shortcuts_disabled_message">Thor 中的快捷方式已停用</string>
+    <string name="profile_icon">配置图标</string>
+    <string name="profile_update_shortcut">更新快捷方式</string>
+    <string name="profile_update_icon_hint">这将更新现有快捷方式和配置的图标。</string>
+    <string name="profile_pin_icon_hint">添加快捷方式时，此图标也会保存到配置中。</string>
+    <string name="profile_icon_games">游戏</string>
+    <string name="profile_icon_office">办公</string>
+    <string name="profile_icon_entertainment">娱乐</string>
+    <string name="profile_icon_kids">儿童</string>
+    <string name="profile_icon_social">社交</string>
+    <string name="profile_icon_communication">通信</string>
+    <string name="profile_icon_music">音乐</string>
     <string name="shortcut_freeze_profile">冻结%1$s</string>
     <string name="profile_no_apps_to_freeze">此配置中没有可冻结的应用</string>
     <string name="add_to_home_screen">添加到主屏幕</string>

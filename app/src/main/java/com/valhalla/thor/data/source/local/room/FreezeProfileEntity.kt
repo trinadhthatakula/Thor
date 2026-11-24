@@ -28,6 +28,7 @@ data class FreezeProfileEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     @ColumnInfo(collate = ColumnInfo.NOCASE) val name: String,
     val createdAt: Long,
+    @ColumnInfo(defaultValue = "'freezer'") val icon: String = "freezer",
 )
 
 /**

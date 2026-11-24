@@ -710,6 +710,7 @@ fun FreezerScreen(
             hasPrivilege = hasPrivilege,
             isWorking = state.profileSaveInFlight || state.profileRemovalRecovery != null,
             onRun = viewModel::runProfile,
+            isProfilePinned = viewModel::isProfileShortcutPinned,
             onPin = if (!state.disableShortcuts && viewModel.isPinSupported()) viewModel::pinProfileShortcut else null,
             // Dismissed first: the kill lands in MainScreen's confirm dialog and then its progress
             // log, and neither is worth reading through a sheet that can no longer say anything
@@ -751,9 +752,9 @@ fun FreezerScreen(
             // to be corrected instead of reporting itself into the void.
             // The session is captured here, at the tap, rather than read when the answer arrives —
             // by then it may already name a different editor.
-            onSave = { name, packageNames ->
-                if (editing == null) viewModel.createProfile(editorSession, name, packageNames)
-                else viewModel.updateProfile(editorSession, editing.id, name, packageNames)
+            onSave = { name, packageNames, icon ->
+                if (editing == null) viewModel.createProfile(editorSession, name, packageNames, icon)
+                else viewModel.updateProfile(editorSession, editing.id, name, packageNames, icon)
             },
             onDismiss = { closeProfileEditor() }
         )
