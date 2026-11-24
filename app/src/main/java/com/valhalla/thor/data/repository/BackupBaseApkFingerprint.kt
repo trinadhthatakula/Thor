@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
+import java.nio.file.Files
 import java.security.MessageDigest
 
 /** Resolve the embedded XAPK through the same central directory and base parser as the installer. */
@@ -69,9 +70,12 @@ internal suspend fun extractParsedBase(
         val extracted = BundleZip.extractEntryTo(bundle, candidate.substringAfterLast('/'), base, budget) {
             context.ensureActive()
         }
-        if (!extracted) continue
-        val info = parse(base)
-        if (info?.applicationInfo != null) return info
+        if (extracted) {
+            val info = parse(base)
+            if (info?.applicationInfo != null) return info
+        }
+        // Reclaim rejected bytes before measuring the next candidate's extraction budget.
+        Files.deleteIfExists(base.toPath())
     }
     return null
 }

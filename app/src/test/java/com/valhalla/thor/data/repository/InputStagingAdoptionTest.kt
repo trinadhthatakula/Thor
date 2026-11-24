@@ -145,6 +145,36 @@ class InputStagingAdoptionTest {
     }
 
     @Test
+    fun `rejected base releases scratch space for the next candidate`() = runBlocking {
+        val bundle = File(context.cacheDir, "candidates.xapk")
+        val scratch = File(context.cacheDir, "candidate.apk")
+        val limitedDirectory = object : File(context.cacheDir.path) {
+            override fun getUsableSpace() = 4L - scratch.length()
+        }
+        val destination = object : File(scratch.path) {
+            override fun getParentFile(): File = limitedDirectory
+        }
+        try {
+            ZipOutputStream(bundle.outputStream()).use { zip ->
+                for ((name, content) in listOf("base.apk" to "junk", "next.apk" to "good")) {
+                    zip.putNextEntry(ZipEntry(name))
+                    zip.write(content.toByteArray())
+                    zip.closeEntry()
+                }
+            }
+            val expected = PackageInfo().apply { applicationInfo = ApplicationInfo() }
+            val info = extractParsedBase(bundle, destination, archiveBundlePlan(bundle)) { file ->
+                expected.takeIf { file.readText() == "good" }
+            }
+            assertSame(expected, info)
+            assertEquals("good", scratch.readText())
+        } finally {
+            scratch.delete()
+            bundle.delete()
+        }
+    }
+
+    @Test
     fun `readable local file stages without privileged access`() = runBlocking {
         val source = File(context.cacheDir, "local-input.xapk")
         val bytes = bundle()
