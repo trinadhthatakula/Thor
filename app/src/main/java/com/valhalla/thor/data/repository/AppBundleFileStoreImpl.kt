@@ -364,9 +364,9 @@ class AppBundleFileStoreImpl(
         } ?: throw IOException("Could not inspect export destination")
         return reconcileExactExportPublication(identity, entries) { id ->
             val deleted = resolver.delete(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                "${MediaStore.Downloads._ID} = ?",
-                arrayOf(id),
+                ContentUris.withAppendedId(collection, id.toLong()),
+                "${MediaStore.Downloads.IS_PENDING} = 1 AND ${MediaStore.Downloads.DISPLAY_NAME} IN (?, ?)",
+                arrayOf(identity.fileName, partialName(identity.fileName)),
             )
             if (deleted != 1) throw IOException("Could not remove incomplete ${identity.fileName}")
         } != null
