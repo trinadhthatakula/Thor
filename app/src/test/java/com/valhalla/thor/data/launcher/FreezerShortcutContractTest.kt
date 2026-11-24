@@ -13,6 +13,7 @@ class FreezerShortcutContractTest {
 
     @Test
     fun parseAction_returns_known_actions() {
+        assertEquals(FreezerShortcutContract.ACTION_FREEZE_PROFILE, FreezerShortcutContract.parseAction("freeze_profile"))
         assertEquals(FreezerShortcutContract.ACTION_LAUNCH, FreezerShortcutContract.parseAction("launch"))
         assertEquals(FreezerShortcutContract.ACTION_FREEZE_ALL, FreezerShortcutContract.parseAction("freeze_all"))
         assertEquals(FreezerShortcutContract.ACTION_UNFREEZE_ALL, FreezerShortcutContract.parseAction("unfreeze_all"))
@@ -40,6 +41,10 @@ class FreezerShortcutContractTest {
         assertTrue(FreezerShortcutContract.isFreezerShortcutId(FreezerShortcutContract.SHORTCUT_FREEZE_ALL))
         assertTrue(FreezerShortcutContract.isFreezerShortcutId(FreezerShortcutContract.SHORTCUT_UNFREEZE_ALL))
         assertTrue(FreezerShortcutContract.isFreezerShortcutId(FreezerShortcutContract.appShortcutId("com.example.app")))
+        val profileId = FreezerShortcutContract.profileShortcutId(42)
+        assertEquals(42L, FreezerShortcutContract.profileIdFromShortcutId(profileId))
+        assertTrue(FreezerShortcutContract.isFreezerShortcutId(profileId))
+        assertFalse(FreezerShortcutContract.isFreezerShortcutId("freezer_profile_0"))
         assertFalse(FreezerShortcutContract.isFreezerShortcutId("unrelated_shortcut"))
     }
 }

@@ -710,6 +710,7 @@ fun FreezerScreen(
             hasPrivilege = hasPrivilege,
             isWorking = state.profileSaveInFlight || state.profileRemovalRecovery != null,
             onRun = viewModel::runProfile,
+            onPin = if (!state.disableShortcuts && viewModel.isPinSupported()) viewModel::pinProfileShortcut else null,
             // Dismissed first: the kill lands in MainScreen's confirm dialog and then its progress
             // log, and neither is worth reading through a sheet that can no longer say anything
             // about the run. Freeze and unfreeze keep the sheet because their report *is* the row.

@@ -1168,6 +1168,7 @@ class FakeAppShortcutController(
     val disabled = mutableListOf<String>()
     val refreshed = mutableListOf<String>()
     val pinned = mutableListOf<String>()
+    val pinnedProfiles = mutableListOf<Pair<Long, String>>()
     val pinnedBulkActions = mutableListOf<String>()
     val shortcutSyncs = mutableListOf<Boolean>()
 
@@ -1263,6 +1264,12 @@ class FakeAppShortcutController(
     override suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
         pinFailures[packageName]?.let { throw it }
         pinned += packageName
+    }
+
+    override fun syncProfileShortcuts() = Unit
+
+    override fun pinProfileShortcut(profileId: Long, name: String) {
+        pinnedProfiles += profileId to name
     }
 
     override fun pinBulkShortcut(action: String) {

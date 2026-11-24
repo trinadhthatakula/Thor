@@ -29,6 +29,7 @@ import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepPhase
 import com.valhalla.thor.domain.model.PrivilegeSweepStatus
 import com.valhalla.thor.domain.repository.AppShortcutController
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeSweepController
@@ -41,6 +42,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.util.concurrent.atomic.AtomicLong
@@ -65,6 +68,7 @@ internal fun terminalSweepRequestIds(statuses: List<PrivilegeSweepStatus>): Set<
 class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
+    private val profileRepository: FreezeProfileRepository,
     private val preferenceRepository: PreferenceRepository,
     private val sweepController: PrivilegeSweepController,
     private val stateReader: AppFreezeStateReader,
@@ -74,6 +78,7 @@ class FreezerShortcutManager(
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val shortcutState = context.getSharedPreferences("freezer_shortcut_state", Context.MODE_PRIVATE)
     private val shortcutSyncLock = Any()
+    private val profileSyncMutex = Mutex()
     @Volatile private var shortcutsEnabled = true
     private val shortcutSyncVersion = AtomicLong()
 
@@ -176,6 +181,45 @@ class FreezerShortcutManager(
         }
     }
 
+    override fun pinProfileShortcut(profileId: Long, name: String) {
+        val shortcut = profileShortcut(profileId, name)
+        synchronized(shortcutSyncLock) {
+            if (!shortcutsEnabled) return
+            ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(name).intentSender)
+        }
+    }
+
+    override fun syncProfileShortcuts() {
+        launchSafely("updating pinned profiles") {
+            profileSyncMutex.withLock {
+                val pins = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+                    .filter { it.isEnabled }
+                    .mapNotNull { pin -> FreezerShortcutContract.profileIdFromShortcutId(pin.id)?.let { it to pin } }
+                if (pins.isEmpty()) return@withLock
+                val profiles = profileRepository.observeProfiles().first().associateBy { it.id }
+                synchronized(shortcutSyncLock) {
+                    if (!shortcutsEnabled) return@synchronized
+                    val updates = mutableListOf<ShortcutInfoCompat>()
+                    val deleted = mutableListOf<String>()
+                    for ((profileId, pin) in pins) {
+                        val profile = profiles[profileId]
+                        if (profile == null) {
+                            deleted += pin.id
+                        } else if (pin.shortLabel.toString() != profile.name ||
+                            pin.longLabel.toString() != context.getString(R.string.shortcut_freeze_profile, profile.name)
+                        ) {
+                            updates += profileShortcut(profile.id, profile.name)
+                        }
+                    }
+                    if (updates.isNotEmpty()) pushShortcutUpdate(updates)
+                    if (deleted.isNotEmpty()) ShortcutManagerCompat.disableShortcuts(
+                        context, deleted, context.getString(R.string.profile_deleted),
+                    )
+                }
+            }
+        }
+    }
+
     /** Sync the dynamic pair and any already-pinned Freezer shortcuts with the global setting. */
     override fun syncShortcuts(enabled: Boolean) {
         shortcutsEnabled = enabled
@@ -191,6 +235,7 @@ class FreezerShortcutManager(
                 // different order than they were called, but the final state must match the setting.
                 if (shortcutsEnabled) {
                     restorePinnedShortcuts()
+                    syncProfileShortcuts()
                     ShortcutManagerCompat.setDynamicShortcuts(
                         context,
                         listOf(
@@ -218,7 +263,10 @@ class FreezerShortcutManager(
             } else {
                 prefs.disableShortcuts || prefs.settingsLost
             }
-            if (!disabled) return true
+            if (!disabled) {
+                syncProfileShortcuts()
+                return true
+            }
             // Use the same save-before-disable path as syncShortcuts(false), so these pins can be
             // restored when the user enables shortcuts again.
             disablePinnedShortcuts()
@@ -357,6 +405,17 @@ class FreezerShortcutManager(
             .setIntent(trampolineIntent(action))
             .build()
     }
+
+    private fun profileShortcut(profileId: Long, name: String): ShortcutInfoCompat =
+        ShortcutInfoCompat.Builder(context, FreezerShortcutContract.profileShortcutId(profileId))
+            .setShortLabel(name)
+            .setLongLabel(context.getString(R.string.shortcut_freeze_profile, name))
+            .setIcon(bulkIcon(R.drawable.frozen, freezeShortcutBg))
+            .setIntent(
+                trampolineIntent(FreezerShortcutContract.ACTION_FREEZE_PROFILE)
+                    .putExtra(FreezerShortcutContract.EXTRA_PROFILE_ID, profileId)
+            )
+            .build()
 
     private data class BulkSpec(val id: String, val labelRes: Int, val iconRes: Int, val background: Int)
 

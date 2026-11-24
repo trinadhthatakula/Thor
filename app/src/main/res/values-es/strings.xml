@@ -583,6 +583,8 @@
     <string name="disable_shortcuts">Desactivar accesos directos</string>
     <string name="disable_shortcuts_desc">Desactiva los accesos directos del Congelador, incluidos los fijados en la pantalla de inicio</string>
     <string name="shortcuts_disabled_message">Los accesos directos están desactivados en Thor</string>
+    <string name="shortcut_freeze_profile">Congelar %1$s</string>
+    <string name="profile_no_apps_to_freeze">No hay aplicaciones que congelar en este perfil</string>
     <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>
     <string name="freeze_all_apps">Congelar todo en el Congelador</string>
     <string name="shortcuts">Accesos directos</string>

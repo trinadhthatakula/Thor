@@ -574,6 +574,8 @@
     <string name="disable_shortcuts">停用快捷方式</string>
     <string name="disable_shortcuts_desc">停用冻结室快捷方式，包括已固定到主屏幕的快捷方式</string>
     <string name="shortcuts_disabled_message">Thor 中的快捷方式已停用</string>
+    <string name="shortcut_freeze_profile">冻结%1$s</string>
+    <string name="profile_no_apps_to_freeze">此配置中没有可冻结的应用</string>
     <string name="add_to_home_screen">添加到主屏幕</string>
     <string name="freeze_all_apps">冻结列表中的全部应用</string>
     <string name="shortcuts">快捷方式</string>

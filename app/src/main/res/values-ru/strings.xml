@@ -299,6 +299,8 @@
     <string name="disable_shortcuts">Отключить ярлыки</string>
     <string name="disable_shortcuts_desc">Отключить ярлыки заморозки, включая закреплённые на главном экране</string>
     <string name="shortcuts_disabled_message">Ярлыки отключены в Thor</string>
+    <string name="shortcut_freeze_profile">Заморозить %1$s</string>
+    <string name="profile_no_apps_to_freeze">В этом профиле нет приложений для заморозки</string>
     <string name="add_to_home_screen">Добавить на рабочий стол</string>
     <string name="freeze_all_apps">Заморозить все в списке</string>
     <string name="shortcuts">Ярлыки</string>

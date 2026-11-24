@@ -96,6 +96,7 @@ fun FreezeProfilesSheet(
     hasPrivilege: Boolean,
     onRun: (profileId: Long, op: BulkOp, mode: FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
+    onPin: ((FreezeProfile) -> Unit)?,
     onCreate: () -> Unit,
     onEdit: (FreezeProfile) -> Unit,
     onDelete: (profileId: Long) -> Unit,
@@ -185,6 +186,7 @@ fun FreezeProfilesSheet(
                         isWorking = isWorking,
                         onRun = { op, mode -> onRun(profile.id, op, mode) },
                         onKill = onKill,
+                        onPin = onPin,
                         onEdit = { onEdit(profile) },
                         onDelete = { pendingDelete = profile }
                     )
@@ -256,6 +258,7 @@ private fun FreezeProfileRow(
     isWorking: Boolean,
     onRun: (BulkOp, FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
+    onPin: ((FreezeProfile) -> Unit)?,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -385,6 +388,16 @@ private fun FreezeProfileRow(
                         )
                     }
                     HorizontalDivider()
+                    if (onPin != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.add_to_home_screen)) },
+                            enabled = !isWorking && profile.size > 0,
+                            onClick = {
+                                menuOpen = false
+                                onPin(profile)
+                            }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_edit)) },
                         enabled = !isWorking,

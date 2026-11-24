@@ -659,6 +659,7 @@ class FreezerViewModel(
                     }
                 }
                 if (saved) {
+                    appShortcuts.syncProfileShortcuts()
                     pendingProfileRemoval = null
                     _uiState.update { it.copy(profileRemovalRecovery = null) }
                     when (removal) {
@@ -1094,6 +1095,10 @@ class FreezerViewModel(
             // [launchPin]'s `onFailure` instead of becoming two places that must agree.
             refused?.let { throw it }
         }
+    }
+
+    fun pinProfileShortcut(profile: FreezeProfile) {
+        launchPin(profile.name) { appShortcuts.pinProfileShortcut(profile.id, profile.name) }
     }
 
     fun pinBulkShortcut(freeze: Boolean) {
