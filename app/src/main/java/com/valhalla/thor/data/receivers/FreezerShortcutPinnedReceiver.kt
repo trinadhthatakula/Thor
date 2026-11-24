@@ -60,7 +60,13 @@ class FreezerShortcutPinnedReceiver : BroadcastReceiver(), KoinComponent {
                 val previous = FreezeProfileIcon.fromKey(intent.getStringExtra(FreezerShortcutContract.EXTRA_PREVIOUS_ICON))
                 val selected = FreezeProfileIcon.fromKey(intent.getStringExtra(FreezerShortcutContract.EXTRA_PROFILE_ICON))
                 if (profileId > 0 && previous != null && selected != null && selected != previous) {
-                    profiles.changeIconIfCurrent(profileId, previous, selected)
+                    try {
+                        profiles.changeIconIfCurrent(profileId, previous, selected)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e("FreezerShortcut", "Could not save the pinned icon for profile $profileId", e)
+                    }
                 }
                 val allowed = shortcutManager.reconcilePinnedShortcutAfterPin()
                 val message = if (!allowed) {

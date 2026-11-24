@@ -1115,8 +1115,9 @@ class FreezerViewModel(
         null
     }
 
-    fun pinProfileShortcut(profile: FreezeProfile, icon: FreezeProfileIcon, alreadyPinned: Boolean) {
+    fun pinProfileShortcut(profile: FreezeProfile, icon: FreezeProfileIcon) {
         launchPin(profile.name) {
+            val alreadyPinned = isProfileShortcutPinned(profile.id) ?: return@launchPin
             if (alreadyPinned && icon != profile.icon) {
                 // Android may send a success callback immediately for an existing pin. This is
                 // an explicit update in Thor, with no second launcher confirmation to cancel.

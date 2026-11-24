@@ -99,7 +99,7 @@ fun FreezeProfilesSheet(
     hasPrivilege: Boolean,
     onRun: (profileId: Long, op: BulkOp, mode: FreezerMode?) -> Unit,
     onKill: (List<AppInfo>) -> Unit,
-    onPin: ((FreezeProfile, FreezeProfileIcon, Boolean) -> Unit)?,
+    onPin: ((FreezeProfile, FreezeProfileIcon) -> Unit)?,
     isProfilePinned: suspend (Long) -> Boolean?,
     onCreate: () -> Unit,
     onEdit: (FreezeProfile) -> Unit,
@@ -215,7 +215,7 @@ fun FreezeProfilesSheet(
             onDismiss = { pinProfileId = null },
             onConfirm = { icon ->
                 pinProfileId = null
-                onPin(pinProfile, icon, alreadyPinned)
+                onPin(pinProfile, icon)
             },
         )
     }
