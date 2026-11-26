@@ -1,0 +1,7 @@
+• ❄️ Pin a Freezer profile to your home screen and freeze its apps with one tap. Pick from eight icons when creating, editing, or pinning it.
+
+• 🔍 Compare SHA-256 fingerprints below app versions in the installer, App Info, and backup previews. App list exports include the full checksum.
+
+• 📦 Find exported APKs and app bundles by app name and version, even after an interrupted export resumes.
+
+• 🔐 Improved app lock verification and safer extraction of APK bundles.
