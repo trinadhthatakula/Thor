@@ -67,6 +67,8 @@ data class NewPrivilegeSweepSnapshot(
     val targets: List<String>,
     val sourceAssociations: Set<String> = setOf(source.name),
     val addToFreezer: Boolean = false,
+    val targetUserSerial: Int? = null,
+    val targetUserName: String? = null,
 ) {
     @Suppress("DEPRECATION")
     val executionId: UUID
@@ -132,6 +134,8 @@ data class StoredPrivilegeSweep(
     val claimToken: String? = null,
     val claimLeaseExpiresAtEpochMs: Long? = null,
     val addToFreezer: Boolean = false,
+    val targetUserSerial: Int? = null,
+    val targetUserName: String? = null,
 )
 
 data class ClaimedPrivilegeSweepRequest(

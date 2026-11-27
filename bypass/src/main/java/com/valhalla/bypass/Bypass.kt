@@ -162,6 +162,7 @@ object Bypass {
             "Landroid/app",
             "Landroid/content/pm",
             "Landroid/hardware/input",
+            "Landroid/os/IUserManager;",
             "Lcom/android/internal/app"
         )
     }

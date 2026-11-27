@@ -15,6 +15,9 @@ import androidx.sqlite.async.executeSQL
     entities = [
         AppEntity::class,
         FreezerEntity::class,
+        ScopedFreezerAppEntity::class,
+        ScopedFreezerDisableEntity::class,
+        ScopedFreezerProfileEntity::class,
         ExtensionDataEntity::class,
         FreezeProfileEntity::class,
         FreezeProfileAppEntity::class,
@@ -28,7 +31,7 @@ import androidx.sqlite.async.executeSQL
         DataTaskItemEntity::class,
         DataTaskOutputEntity::class,
     ],
-    version = 12,
+    version = 13,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
@@ -44,6 +47,7 @@ import androidx.sqlite.async.executeSQL
         AutoMigration(from = 7, to = 8),
         AutoMigration(from = 10, to = 11),
         AutoMigration(from = 11, to = 12),
+        AutoMigration(from = 12, to = 13),
     ],
     exportSchema = true,
 )
@@ -51,6 +55,7 @@ import androidx.sqlite.async.executeSQL
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
     abstract fun freezerDao(): FreezerDao
+    abstract fun crossUserFreezerDao(): CrossUserFreezerDao
     abstract fun extensionDataDao(): ExtensionDataDao
     abstract fun freezeProfileDao(): FreezeProfileDao
     abstract fun componentOverrideDao(): ComponentOverrideDao

@@ -38,7 +38,7 @@ class SweepMigrationTest {
     fun clearFixtureFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.deleteDatabase(TEST_DATABASE)
-        (1..11).forEach { context.deleteDatabase("$TEST_DATABASE-chain-$it") }
+        (1..12).forEach { context.deleteDatabase("$TEST_DATABASE-chain-$it") }
     }
 
     @Test
@@ -245,14 +245,14 @@ class SweepMigrationTest {
     }
 
     @Test
-    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema12() = runBlocking {
-        (1..11).forEach { startVersion ->
+    fun everySupportedStartingVersionMigratesThroughTheRealChainToSchema13() = runBlocking {
+        (1..12).forEach { startVersion ->
             val databaseName = "$TEST_DATABASE-chain-$startVersion"
             val chainHelper = helperFor(databaseName)
             chainHelper.createDatabase(startVersion).close()
 
             chainHelper.migrateAndValidateTables(
-                12,
+                13,
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_8_9,
                 AppDatabase.MIGRATION_9_10,

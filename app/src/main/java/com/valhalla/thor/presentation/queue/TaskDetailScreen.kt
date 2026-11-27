@@ -245,6 +245,9 @@ internal fun TaskDetailUiState.loggerLines(): List<UiText> {
     )
 
     val result = mutableListOf<UiText>()
+    if (summary.queueKind == TaskQueueKind.PRIVILEGE) {
+        summary.titleArguments.firstOrNull()?.let { result += UiText.DynamicString(it) }
+    }
     result += UiText.StringResource(summary.phase.labelRes())
     result += UiText.StringResource(
         R.string.task_queue_progress,

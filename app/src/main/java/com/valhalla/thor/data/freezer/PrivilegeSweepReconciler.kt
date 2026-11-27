@@ -140,6 +140,11 @@ internal class PrivilegeSweepReconciler(
         nowMs: Long,
         reinstallVerifier: PrivilegeSweepReinstallPostconditionVerifier,
     ): PrivilegeSweepRecovery {
+        // The current-user readers cannot establish the outcome of an interrupted operation in
+        // another user. The durable request never falls back to them or replays an unknown write.
+        if (snapshot.targetUserSerial != null) {
+            return unknown(snapshot.operation.unknownRecoveryCode(), nowMs)
+        }
         if (snapshot.operation == PrivilegeSweepOperation.CLEAR_CACHE) {
             return unknown(CLEAR_CACHE_OUTCOME_UNKNOWN, nowMs)
         }

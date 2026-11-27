@@ -1146,4 +1146,11 @@
     <string name="navigation_dp">%1$d dp</string>
     <string name="combined_app_lists">قوائم التطبيقات المدمجة</string>
     <string name="combined_app_lists_desc">السماح باختيار تطبيقات المستخدم والنظام معًا في التطبيقات والمجمّد</string>
+    <string name="freezer_current_user">المستخدم الحالي</string>
+    <string name="freezer_secondary_user">مستخدم ثانوي</string>
+    <string name="freezer_work_profile">ملف العمل</string>
+    <string name="freezer_user_number">المستخدم %1$d</string>
+    <string name="freezer_user_confirmation">هل تريد تطبيق هذا الإجراء على %1$s في %2$s؟</string>
+    <string name="freezer_user_unavailable">المستخدم المحدد غير متاح. تم الرجوع إلى المستخدم الحالي.</string>
+    <string name="freezer_user_action_failed">تعذر على المجمّد إكمال الإجراء لهذا المستخدم.</string>
 </resources>

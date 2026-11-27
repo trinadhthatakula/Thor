@@ -65,6 +65,7 @@ internal class DefaultPrivilegeSweepItemExecutor(
     private val manageApp: ManageAppUseCase,
     private val stateReader: PrivilegeSweepPackageStateReader,
     private val freezerRepository: FreezerRepository,
+    private val crossUserFreezer: CrossUserFreezer? = null,
 ) : PrivilegeSweepItemExecutor {
 
     override suspend fun execute(
@@ -102,6 +103,10 @@ internal class DefaultPrivilegeSweepItemExecutor(
                     owner = snapshot.operation.owner(),
                     execution = execution,
                 ) {
+                    if (snapshot.targetUserSerial != null) {
+                        externalSuspensionRemains = requireNotNull(crossUserFreezer).execute(snapshot, packageName, execution)
+                        return@withPackageOperation SweepAttemptOutcome.SUCCEEDED
+                    }
                     val freezeCandidate = if (snapshot.operation == PrivilegeSweepOperation.FREEZE)
                         stateReader.candidateForFreeze(packageName) else null
                     val state = freezeCandidate?.state ?: stateReader.stateOf(packageName)

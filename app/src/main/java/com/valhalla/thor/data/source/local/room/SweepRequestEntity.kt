@@ -75,6 +75,10 @@ data class SweepRequestEntity(
     val acknowledgedAtEpochMs: Long? = null,
     @ColumnInfo(name = "add_to_freezer", defaultValue = "0")
     val addToFreezer: Boolean = false,
+    @ColumnInfo(name = "target_user_serial")
+    val targetUserSerial: Int? = null,
+    @ColumnInfo(name = "target_user_name")
+    val targetUserName: String? = null,
 )
 
 /** Temporary source-compatible bridge for the aggregate-null schema 8 callers removed in Task 4. */

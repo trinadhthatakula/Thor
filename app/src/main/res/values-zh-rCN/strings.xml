@@ -1027,4 +1027,11 @@
     <string name="navigation_dp">%1$d dp</string>
     <string name="combined_app_lists">合并应用列表</string>
     <string name="combined_app_lists_desc">允许在应用和冻结器中同时选择用户应用和系统应用</string>
+    <string name="freezer_current_user">当前用户</string>
+    <string name="freezer_secondary_user">次要用户</string>
+    <string name="freezer_work_profile">工作资料</string>
+    <string name="freezer_user_number">用户 %1$d</string>
+    <string name="freezer_user_confirmation">要对 %2$s 中的 %1$s 执行此操作吗？</string>
+    <string name="freezer_user_unavailable">所选用户不可用，已返回当前用户。</string>
+    <string name="freezer_user_action_failed">冻结器未能为此用户完成操作。</string>
 </resources>

@@ -83,6 +83,10 @@ class AppModule {
     fun freezerDao(appDatabase: AppDatabase): FreezerDao = appDatabase.freezerDao()
 
     @Single
+    fun crossUserFreezerDao(appDatabase: AppDatabase): com.valhalla.thor.data.source.local.room.CrossUserFreezerDao =
+        appDatabase.crossUserFreezerDao()
+
+    @Single
     fun freezeProfileDao(appDatabase: AppDatabase): FreezeProfileDao =
         appDatabase.freezeProfileDao()
 

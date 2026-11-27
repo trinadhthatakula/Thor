@@ -57,6 +57,7 @@ abstract class PrivilegeSweepDao {
           AND state != 'CANCEL_REQUESTED'
           AND operation = :operation
           AND user_id = :userId
+          AND target_user_serial IS :targetUserSerial
           AND ((freezer_mode IS NULL AND :freezerMode IS NULL) OR freezer_mode = :freezerMode)
           AND add_to_freezer = :addToFreezer
         ORDER BY created_at_epoch_ms ASC, request_id ASC
@@ -67,6 +68,7 @@ abstract class PrivilegeSweepDao {
         freezerMode: String?,
         addToFreezer: Boolean,
         userId: Int,
+        targetUserSerial: Int? = null,
     ): List<SweepRequestWithTargets>
 
     /** The query, exact target comparison, and both inserts share one Room transaction. */
@@ -83,6 +85,7 @@ abstract class PrivilegeSweepDao {
             freezerMode = request.freezerMode,
             addToFreezer = request.addToFreezer,
             userId = request.userId,
+            targetUserSerial = request.targetUserSerial,
         ).firstOrNull { candidate ->
             candidate.targets
                 .sortedBy(SweepTargetEntity::ordinal)

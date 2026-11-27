@@ -6,6 +6,7 @@ package com.valhalla.thor.data.freezer
 import android.content.Context
 import android.os.PowerManager
 import com.valhalla.thor.data.gateway.ReinstallPostconditionVerifier
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ReinstallPostconditionFailed
 import com.valhalla.thor.data.service.ForegroundTaskOwner
 import com.valhalla.thor.data.service.ForegroundTaskWakeLock
@@ -140,7 +141,10 @@ internal class RoomPrivilegeSweepDrainRuntime(
         while (true) {
             currentCoroutineContext().ensureActive()
             // Authorization is checked only between targets, never used to reinterpret a result.
-            if (!hasPrivilege()) {
+            val active = privilegeState.state.first { it.isReady }.active
+            val authorized = active != PrivilegeMode.NONE && (snapshot.targetUserSerial == null ||
+                active == PrivilegeMode.ROOT || active == PrivilegeMode.SHIZUKU)
+            if (!authorized) {
                 check(blockMissingPrivilege(claim)) { "Privilege block did not commit" }
                 return
             }

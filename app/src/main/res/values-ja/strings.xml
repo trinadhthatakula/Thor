@@ -890,4 +890,11 @@
     <string name="navigation_dp">%1$d dp</string>
     <string name="combined_app_lists">アプリ一覧の統合</string>
     <string name="combined_app_lists_desc">アプリとフリーザーでユーザーアプリとシステムアプリを同時に選択できるようにします</string>
+    <string name="freezer_current_user">現在のユーザー</string>
+    <string name="freezer_secondary_user">セカンダリ ユーザー</string>
+    <string name="freezer_work_profile">仕事用プロファイル</string>
+    <string name="freezer_user_number">ユーザー %1$d</string>
+    <string name="freezer_user_confirmation">%2$s の %1$s にこの操作を適用しますか？</string>
+    <string name="freezer_user_unavailable">選択したユーザーを利用できません。現在のユーザーに戻りました。</string>
+    <string name="freezer_user_action_failed">このユーザーの操作を完了できませんでした。</string>
 </resources>

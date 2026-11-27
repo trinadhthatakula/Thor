@@ -1100,4 +1100,11 @@
     <string name="navigation_dp">%1$d dp</string>
     <string name="combined_app_lists">Listas de aplicações combinadas</string>
     <string name="combined_app_lists_desc">Permitir selecionar Utilizador e Sistema em simultâneo em Aplicações e Congelador</string>
+    <string name="freezer_current_user">Utilizador atual</string>
+    <string name="freezer_secondary_user">Utilizador secundário</string>
+    <string name="freezer_work_profile">Perfil de trabalho</string>
+    <string name="freezer_user_number">Utilizador %1$d</string>
+    <string name="freezer_user_confirmation">Aplicar esta ação a %1$s em %2$s?</string>
+    <string name="freezer_user_unavailable">O utilizador selecionado não está disponível. Voltou ao utilizador atual.</string>
+    <string name="freezer_user_action_failed">O Congelador não conseguiu concluir a ação para este utilizador.</string>
 </resources>
