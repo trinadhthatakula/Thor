@@ -16,6 +16,10 @@ import android.os.PersistableBundle
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.gateway.userIdOf
+import com.valhalla.thor.data.source.local.freezerApplicationInfo
+import com.valhalla.thor.data.source.local.freezerEnabledSetting
+import com.valhalla.thor.data.source.local.freezerPlatformUsers
+import com.valhalla.thor.data.source.local.toFreezerUser
 import com.valhalla.thor.data.source.local.DataClearOutcome
 import com.valhalla.thor.data.source.local.awaitDataObserver
 import com.valhalla.thor.domain.model.LEGACY_ROOT_SUSPENDER_IDENTITY
@@ -204,6 +208,45 @@ class ThorRootService : RootService() {
                 return this@ThorRootService.clearAppData(packageName, userId)
             }
 
+            override fun listFreezerUsers(): List<android.os.Bundle> {
+                this@ThorRootService.enforceCaller()
+                return freezerPlatformUsers(
+                    systemInterface("user", "android.os.IUserManager"),
+                    userIdOf(Binder.getCallingUid()),
+                )
+            }
+
+            override fun getFreezerApplicationInfo(packageName: String, userId: Int): ApplicationInfo? {
+                this@ThorRootService.enforceCaller()
+                return freezerApplicationInfo(
+                    systemInterface("package", "android.content.pm.IPackageManager"),
+                    packageName,
+                    userId,
+                )
+            }
+
+            override fun getFreezerEnabledSetting(packageName: String, userId: Int): Int {
+                this@ThorRootService.enforceCaller()
+                return freezerEnabledSetting(
+                    systemInterface("package", "android.content.pm.IPackageManager"), packageName, userId,
+                )
+            }
+
+            override fun getScopedFreezerSuspension(
+                packageName: String,
+                userId: Int,
+                serial: Int,
+            ): SuspensionReadbackResult {
+                val matches = listFreezerUsers().mapNotNull { it.toFreezerUser() }
+                    .any { it.id == userId && it.serial == serial }
+                val state = if (matches) this@ThorRootService.readSuspensionState(packageName, userId)
+                    else SuspensionSnapshot(
+                        SuspensionReadbackProtocol.STATUS_REFUSED,
+                        SuspensionReadbackProtocol.REASON_USER_MISMATCH,
+                    )
+                return state.toReadbackResult(packageName, userId)
+            }
+
             override fun clearAppDataForUserWithResult(
                 requestId: String?,
                 packageName: String?,
@@ -224,6 +267,14 @@ class ThorRootService : RootService() {
                     .toParcelable()
             }
         }
+    }
+
+    @SuppressLint("PrivateApi")
+    internal fun systemInterface(serviceName: String, className: String): Any {
+        val binder = Class.forName("android.os.ServiceManager")
+            .getMethod("getService", String::class.java).invoke(null, serviceName) as IBinder
+        return requireNotNull(Class.forName("$className\$Stub")
+            .getMethod("asInterface", IBinder::class.java).invoke(null, binder))
     }
 
     /**

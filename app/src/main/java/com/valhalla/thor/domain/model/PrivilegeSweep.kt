@@ -66,6 +66,8 @@ data class PrivilegeSweepSpec(
      * This is persisted with the sweep rather than read from UI state when work eventually runs.
      */
     val addToFreezer: Boolean = false,
+    val targetUserSerial: Int? = null,
+    val targetUserName: String? = null,
 ) {
     init {
         require(packageNames == normalizeSweepTargets(packageNames)) {
@@ -110,6 +112,8 @@ data class PrivilegeSweepStatus(
     val rootLaneDegraded: Boolean,
     val profileIds: Set<Long> = emptySet(),
     val externalSuspensionRemains: Boolean = false,
+    val targetUserSerial: Int? = null,
+    val targetUserName: String? = null,
 )
 
 sealed interface PrivilegeSweepLaunchResult {

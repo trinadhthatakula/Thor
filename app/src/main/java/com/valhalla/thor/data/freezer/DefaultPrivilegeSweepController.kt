@@ -61,6 +61,8 @@ class DefaultPrivilegeSweepController internal constructor(
                     freezerMode = spec.freezerMode,
                     addToFreezer = spec.addToFreezer,
                     userId = spec.userId,
+                    targetUserSerial = spec.targetUserSerial,
+                    targetUserName = spec.targetUserName,
                     source = spec.source,
                     createdAtEpochMs = nowMs,
                     targets = targets,
@@ -128,6 +130,8 @@ class DefaultPrivilegeSweepController internal constructor(
             // Only commands executed for this task can establish root fallback use.
             rootLaneDegraded = targetSnapshots.any { it.rootLaneDegraded },
             profileIds = profileIdsFromSourceAssociations(sourceAssociations),
+            targetUserSerial = targetUserSerial,
+            targetUserName = targetUserName,
             externalSuspensionRemains = targetSnapshots.any { it.resultCode?.value == "EXTERNAL_SUSPENSION_REMAINS" },
         )
 

@@ -41,13 +41,17 @@ internal enum class RootSuspensionReadFailure {
  * cancel a dispatched Binder transaction; the service owns the bounded dump/read deadline instead.
  * An absent or broken reply conveys no actionable ownership, including after a service death.
  */
-internal class RootSuspensionReadbackClient(private val service: IThorRootService) {
+internal class RootSuspensionReadbackClient(
+    private val readback: (String, Int) -> SuspensionReadbackResult?,
+) {
+    constructor(service: IThorRootService) : this(service::getSuspensionStateForUser)
+
     fun read(packageName: String, userId: Int): RootSuspensionReadback {
         if (!SuspensionReadbackProtocol.isValidPackageIdentity(packageName) || userId < 0) {
             return RootSuspensionReadback.Unknown(RootSuspensionReadFailure.INVALID_REQUEST)
         }
         val reply = try {
-            service.getSuspensionStateForUser(packageName, userId)
+            readback(packageName, userId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: DeadObjectException) {

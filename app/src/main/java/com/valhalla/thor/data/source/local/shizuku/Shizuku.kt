@@ -316,6 +316,38 @@ object Shizuku {
     private fun asInterface(className: String, serviceName: String): Any =
         asInterface(className, SystemServiceHelper.getSystemService(serviceName))
 
+    internal fun listFreezerUsers() = com.valhalla.thor.data.source.local.freezerPlatformUsers(
+        asInterface("android.os.IUserManager", "user"), thorUserId,
+    )
+
+    internal fun getFreezerApplicationInfo(packageName: String, userId: Int) =
+        com.valhalla.thor.data.source.local.freezerApplicationInfo(
+            asInterface("android.content.pm.IPackageManager", "package"), packageName, userId,
+        )
+
+    internal fun getFreezerEnabledSetting(packageName: String, userId: Int) =
+        com.valhalla.thor.data.source.local.freezerEnabledSetting(
+            asInterface("android.content.pm.IPackageManager", "package"), packageName, userId,
+        )
+
+    @SuppressLint("PrivateApi")
+    internal fun freezerSuspensionMarker(packageName: String, userId: Int): String? {
+        val type = Class.forName("android.content.pm.ILauncherApps")
+        val launcher = asInterface(type.name, "launcherapps")
+        val user = android.os.UserHandle.getUserHandleForUid(userId * 100_000)
+        val extras = type.getMethod("getSuspendedPackageLauncherExtras", String::class.java, user.javaClass)
+            .invoke(launcher, packageName, user) as? android.os.Bundle
+        return extras?.getString(SuspensionMarkers.KEY)
+    }
+
+    internal fun setFreezerSuspension(
+        context: Context, packageName: String, targetUser: Int, actor: SuspensionOwner, suspended: Boolean,
+    ) {
+        val extras = if (suspended && actor.packageName == SHELL_SUSPENDER_IDENTITY)
+            SuspensionMarkers(context).extras(packageName, targetUser) else null
+        setPackagesSuspendedViaBypass(context, packageName, suspended, actor.packageName, targetUser, extras, actor.userId)
+    }
+
     val lockScreen
         get() = runCatching {
             execute("input keyevent 26").first == 0
@@ -654,6 +686,7 @@ object Shizuku {
         caller: String,
         userId: Int,
         appExtras: android.os.PersistableBundle? = null,
+        suspendingUserId: Int = userId,
     ) {
         val pm = asInterface("android.content.pm.IPackageManager", "package")
         val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
@@ -675,7 +708,7 @@ object Shizuku {
         val signatures = listOf(
             arrayOf(stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
                 intType, stringType, intType, intType) to
-                arrayOf(targets, suspended, null, appExtras, dialogInfo, 0, caller, userId, userId),
+                arrayOf(targets, suspended, null, appExtras, dialogInfo, 0, caller, suspendingUserId, userId),
             arrayOf(stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
                 intType, stringType, intType) to
                 arrayOf(targets, suspended, null, appExtras, dialogInfo, 0, caller, userId),

@@ -107,6 +107,7 @@ fun FreezeProfilesSheet(
     onDismiss: () -> Unit,
     canForceStop: Boolean = rememberCanForceStopApps(),
     isWorking: Boolean = false,
+    scopeLabel: String? = null,
 ) {
     // Deletion is the one irreversible action here — a profile carries a name and a hand-picked
     // list that nothing else in the app can reconstruct. Plain remember: a confirmation that
@@ -157,6 +158,10 @@ fun FreezeProfilesSheet(
             }
         }
 
+        scopeLabel?.let {
+            Text(it, modifier = Modifier.padding(horizontal = 24.dp),
+                style = MaterialTheme.typography.bodyMedium)
+        }
         if (profiles.isEmpty()) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

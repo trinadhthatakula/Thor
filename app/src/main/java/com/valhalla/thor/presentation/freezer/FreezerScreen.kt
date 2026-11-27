@@ -43,6 +43,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,7 +69,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
@@ -108,6 +115,69 @@ fun FreezerScreen(
     onAppAction: (AppClickAction) -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     onNavigateToQueue: () -> Unit = {},
+) {
+    val scoped: CrossUserFreezerViewModel = koinViewModel()
+    val users by scoped.state.collectAsStateWithLifecycle()
+    val owner = LocalLifecycleOwner.current
+    val snackbar = remember { SnackbarHostState() }
+    val scopeMessage = users.message?.let { stringResource(it) }
+    LaunchedEffect(owner, scoped) {
+        owner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (isActive) {
+                scoped.discover()
+                delay(4_000)
+            }
+        }
+    }
+    LaunchedEffect(scopeMessage) {
+        val message = scopeMessage ?: return@LaunchedEffect
+        snackbar.showSnackbar(message)
+        scoped.consumeMessage()
+    }
+    val onScopeSelected: (com.valhalla.thor.domain.model.FreezerUser?) -> Unit = { user ->
+        viewModel.clearSelection()
+        viewModel.updateSearchQuery("")
+        scoped.select(user)
+    }
+    Box(modifier.fillMaxSize()) {
+        val selected = users.selected
+        key(selected?.serial) {
+            if (selected == null) {
+                CurrentUserFreezerScreen(
+                    Modifier, viewModel, sharedTransitionScope, onAppAction, onMultiAppAction, onNavigateToQueue,
+                    userPicker = {
+                        FreezerUserPicker(users.users, null, onScopeSelected,
+                            Modifier.padding(horizontal = 24.dp))
+                    },
+                )
+            } else {
+                CrossUserFreezerContent(
+                    user = selected,
+                    state = users,
+                    viewModel = scoped,
+                    onNavigateToQueue = onNavigateToQueue,
+                    onScopeSelected = onScopeSelected,
+                )
+            }
+        }
+        if (users.message != null) {
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(
+                bottom = LocalFloatingNavigationClearance.current + 12.dp,
+            ))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CurrentUserFreezerScreen(
+    modifier: Modifier,
+    viewModel: FreezerViewModel,
+    sharedTransitionScope: SharedTransitionScope?,
+    onAppAction: (AppClickAction) -> Unit,
+    onMultiAppAction: (MultiAppAction) -> Unit,
+    onNavigateToQueue: () -> Unit,
+    userPicker: @Composable () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -343,6 +413,8 @@ fun FreezerScreen(
                             )
                         }
                     }
+
+                    userPicker()
 
                     // Search bar — config icon opens settings sheet
                     AppSearchBar(

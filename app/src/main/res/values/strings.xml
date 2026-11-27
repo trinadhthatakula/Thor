@@ -1105,4 +1105,11 @@
     <string name="navigation_dp">%1$d dp</string>
     <string name="combined_app_lists">Combined app lists</string>
     <string name="combined_app_lists_desc">Allow User and System to be selected together in Apps and Freezer</string>
+    <string name="freezer_current_user">Current user</string>
+    <string name="freezer_secondary_user">Secondary user</string>
+    <string name="freezer_work_profile">Work profile</string>
+    <string name="freezer_user_number">User %1$d</string>
+    <string name="freezer_user_confirmation">Apply this action to %1$s in %2$s?</string>
+    <string name="freezer_user_unavailable">The selected user is unavailable. Returned to Current user.</string>
+    <string name="freezer_user_action_failed">Freezer could not complete the action for this user.</string>
 </resources>

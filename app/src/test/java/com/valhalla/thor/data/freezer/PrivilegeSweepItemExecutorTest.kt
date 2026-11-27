@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.PrivilegeExecutionLane
 import com.valhalla.thor.domain.model.PrivilegeExecutionTimeouts
 import com.valhalla.thor.domain.model.PrivilegeSweepOperation
 import com.valhalla.thor.domain.model.PrivilegeSweepSource
+import com.valhalla.thor.domain.model.SuspensionOwner
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.PackageOperationCoordinator
 import com.valhalla.thor.domain.repository.StoredPrivilegeSweep
@@ -25,11 +26,37 @@ import kotlin.time.Duration
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PrivilegeSweepItemExecutorTest {
+
+    @Test
+    fun `shell owner can be recorded under the target user but two owners stay ambiguous`() {
+        val actor = SuspensionOwner("com.android.shell", 0)
+        val legacy = SuspensionOwner("com.android.shell", 10)
+        val external = SuspensionOwner("example.device.policy", 10)
+
+        assertEquals(setOf(actor, external), normalizeFreezerShellOwner(setOf(legacy, external), actor, 10))
+        assertEquals(setOf(actor, external), normalizeFreezerShellOwner(setOf(actor, external), actor, 10))
+        assertNull(normalizeFreezerShellOwner(setOf(actor, legacy, external), actor, 10))
+    }
+
+    @Test
+    fun `scoped requests cannot execute against the current user when their backend is unavailable`() = runTest {
+        val repository = FakeSystemRepository()
+        val freezer = FakeFreezerRepository()
+        val request = stored(PrivilegeSweepOperation.FREEZE, FreezerMode.FREEZE, addToFreezer = true)
+            .copy(userId = 10, targetUserSerial = 73, targetUserName = "Secondary user")
+
+        val result = executor(repository, freezerRepository = freezer).execute(request, PACKAGE)
+
+        assertEquals(SweepAttemptOutcome.FAILED, result.outcome)
+        assertTrue(repository.calls.isEmpty())
+        assertTrue(freezer.added.isEmpty())
+    }
 
     @Test
     fun `system app refusal survives execution without being replaced by generic failure`() = runTest {

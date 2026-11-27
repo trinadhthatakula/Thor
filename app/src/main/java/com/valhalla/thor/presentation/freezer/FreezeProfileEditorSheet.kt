@@ -95,7 +95,8 @@ fun FreezeProfileEditorSheet(
     onSearchChange: (String) -> Unit,
     isSaving: Boolean = false,
     onSave: (name: String, packageNames: List<String>, icon: FreezeProfileIcon) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    scopeLabel: String? = null,
 ) {
     // Keyed on the profile id so reusing this composable for a different row restarts the edit
     // rather than carrying the previous profile's name and ticks into it. The id, not the
@@ -184,7 +185,9 @@ fun FreezeProfileEditorSheet(
                 Column {
                     Spacer(Modifier.height(8.dp))
 
-                    OutlinedTextField(
+                    scopeLabel?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+
+            OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
                         enabled = !isSaving,

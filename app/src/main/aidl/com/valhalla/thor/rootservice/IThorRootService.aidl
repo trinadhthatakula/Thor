@@ -1,5 +1,7 @@
 package com.valhalla.thor.rootservice;
 
+import android.os.Bundle;
+import android.content.pm.ApplicationInfo;
 import com.valhalla.thor.rootservice.SuspensionReadbackResult;
 import com.valhalla.thor.rootservice.RootDataClearResult;
 
@@ -140,4 +142,9 @@ interface IThorRootService {
      * replacement service is UNKNOWN, not proof that the operation was never dispatched.
      */
     @nullable RootDataClearResult getClearAppDataResult(String requestId, String packageName, int userId);
+    /** Cross-user Freezer queries. Appended to retain transaction numbering. */
+    List<Bundle> listFreezerUsers();
+    @nullable ApplicationInfo getFreezerApplicationInfo(String packageName, int userId);
+    int getFreezerEnabledSetting(String packageName, int userId);
+    @nullable SuspensionReadbackResult getScopedFreezerSuspension(String packageName, int userId, int serial);
 }

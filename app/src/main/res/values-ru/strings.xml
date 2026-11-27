@@ -956,4 +956,11 @@
     <string name="navigation_dp">%1$d dp</string>
     <string name="combined_app_lists">Объединённые списки приложений</string>
     <string name="combined_app_lists_desc">Разрешить совместный выбор пользовательских и системных приложений в списке приложений и заморозке</string>
+    <string name="freezer_current_user">Текущий пользователь</string>
+    <string name="freezer_secondary_user">Дополнительный пользователь</string>
+    <string name="freezer_work_profile">Рабочий профиль</string>
+    <string name="freezer_user_number">Пользователь %1$d</string>
+    <string name="freezer_user_confirmation">Применить действие к %1$s в профиле «%2$s»?</string>
+    <string name="freezer_user_unavailable">Выбранный пользователь недоступен. Показан текущий пользователь.</string>
+    <string name="freezer_user_action_failed">Не удалось выполнить действие для этого пользователя.</string>
 </resources>

@@ -153,7 +153,7 @@ internal fun StoredPrivilegeSweep.toQueuedSummary(): QueuedTaskSummary {
         taskId = requestId,
         queueKind = TaskQueueKind.PRIVILEGE,
         operationId = operation.name,
-        titleArguments = emptyList(),
+        titleArguments = listOfNotNull(targetUserName),
         sequence = queueSequence,
         phase = phase,
         progress = TaskProgress(

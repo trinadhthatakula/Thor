@@ -58,6 +58,12 @@ class RootDataClearDelayedObserverFixture : RootService() {
         override fun dumpPackage(packageName: String): String = unsupported()
         override fun clearAppDataForUser(packageName: String, userId: Int): Boolean = unsupported()
         override fun setAppSuspendedAsForUser(packageName: String, suspended: Boolean, suspendingPackage: String?, userId: Int): Boolean = unsupported()
+        override fun getFreezerEnabledSetting(packageName: String, userId: Int): Int = unsupported()
+        override fun getScopedFreezerSuspension(packageName: String, userId: Int, serial: Int): SuspensionReadbackResult =
+            unsupported()
+        override fun listFreezerUsers(): List<android.os.Bundle> = unsupported()
+        override fun getFreezerApplicationInfo(packageName: String, userId: Int): android.content.pm.ApplicationInfo? =
+            unsupported()
         override fun getSuspensionStateForUser(packageName: String, userId: Int): SuspensionReadbackResult = unsupported()
     }
 

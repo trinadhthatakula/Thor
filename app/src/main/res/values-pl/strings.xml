@@ -1141,4 +1141,11 @@
     <string name="navigation_dp">%1$d dp</string>
     <string name="combined_app_lists">Połączone listy aplikacji</string>
     <string name="combined_app_lists_desc">Zezwalaj na jednoczesny wybór aplikacji użytkownika i systemowych w aplikacjach i zamrażarce</string>
+    <string name="freezer_current_user">Bieżący użytkownik</string>
+    <string name="freezer_secondary_user">Użytkownik dodatkowy</string>
+    <string name="freezer_work_profile">Profil służbowy</string>
+    <string name="freezer_user_number">Użytkownik %1$d</string>
+    <string name="freezer_user_confirmation">Zastosować tę akcję do %1$s w profilu %2$s?</string>
+    <string name="freezer_user_unavailable">Wybrany użytkownik jest niedostępny. Przywrócono bieżącego użytkownika.</string>
+    <string name="freezer_user_action_failed">Zamrażarka nie mogła wykonać akcji dla tego użytkownika.</string>
 </resources>
