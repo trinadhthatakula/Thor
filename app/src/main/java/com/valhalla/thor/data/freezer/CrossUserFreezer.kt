@@ -150,7 +150,7 @@ internal class CrossUserFreezer(
             }
             PrivilegeSweepOperation.UNFREEZE -> {
                 restore(gateway, user, packageName)
-                false
+                changeSuspension(gateway, user, packageName, false)
             }
             PrivilegeSweepOperation.SUSPEND -> changeSuspension(gateway, user, packageName, true)
             PrivilegeSweepOperation.UNSUSPEND -> changeSuspension(gateway, user, packageName, false)
@@ -202,11 +202,7 @@ internal class CrossUserFreezer(
     }
 
     private suspend fun restore(gateway: Transport, user: FreezerUser, packageName: String) {
-        val previous = dao.previousSetting(user.serial, packageName)
-        if (previous == null) {
-            check(gateway.info(packageName, user.id)?.enabled == true)
-            return
-        }
+        val previous = dao.previousSetting(user.serial, packageName) ?: return
         val current = gateway.setting(packageName, user.id)
         if (current == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER) {
             val command = if (previous == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) "default-state" else "enable"

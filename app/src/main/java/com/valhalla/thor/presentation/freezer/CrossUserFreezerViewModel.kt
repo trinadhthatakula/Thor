@@ -49,6 +49,7 @@ internal class CrossUserFreezerViewModel(
     val state = mutable.asStateFlow()
     private var discovery: Job? = null
     private var loading: Job? = null
+    private var savingOperation: Any? = null
 
     init {
         viewModelScope.launch { freezer.privilegeState.collect { discover() } }
@@ -97,7 +98,7 @@ internal class CrossUserFreezerViewModel(
     fun select(user: FreezerUser?) {
         if (user != null && state.value.users.none { it.id == user.id && it.serial == user.serial }) return
         loading?.cancel()
-        mutable.update { CrossUserFreezerState(it.users, user, requests = it.requests, message = null) }
+        mutable.update { CrossUserFreezerState(it.users, user, requests = it.requests, saving = it.saving) }
         reload()
     }
 
@@ -160,7 +161,9 @@ internal class CrossUserFreezerViewModel(
 
     private fun launchFor(user: FreezerUser, action: suspend () -> Unit) {
         val snapshot = state.value
-        if (snapshot.saving || snapshot.selected?.serial != user.serial) return
+        if (savingOperation != null || snapshot.selected?.serial != user.serial) return
+        val operation = Any()
+        savingOperation = operation
         mutable.update { it.copy(saving = true) }
         viewModelScope.launch {
             try {
@@ -174,7 +177,10 @@ internal class CrossUserFreezerViewModel(
                     discover()
                 }
             } finally {
-                if (state.value.selected?.serial == user.serial) mutable.update { it.copy(saving = false) }
+                if (savingOperation === operation) {
+                    savingOperation = null
+                    mutable.update { it.copy(saving = false) }
+                }
             }
         }
     }
