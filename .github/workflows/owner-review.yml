@@ -1,0 +1,39 @@
+name: Owner PR review exemption
+
+on:
+  # Thor integrates on dev, before workflows reach its default branch (master).
+  pull_request:
+    branches: [dev]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+  pull_request_target:
+    branches: [dev, master, production]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+permissions: {}
+
+jobs:
+  approve-owner:
+    if: >-
+      github.event.pull_request.user.id == github.event.repository.owner.id &&
+      !github.event.pull_request.draft &&
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.id == github.event.repository.id ||
+        github.event_name == 'pull_request_target' &&
+        (github.base_ref != 'dev' || github.event.pull_request.head.repo.id != github.event.repository.id)
+      ) &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      # Never check out or execute PR code in this job. Forks use the default branch workflow.
+      - name: Record the owner exemption on this revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api --silent --method POST "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            -f event=APPROVE -f commit_id="$HEAD_SHA" \
+            -f body='Repository owner authored this PR. Required CI checks still apply.'
