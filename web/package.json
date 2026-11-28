@@ -23,17 +23,17 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^8.1.6",
-    "@astrojs/sitemap": "^3.7.5",
-    "astro": "^7.4.12"
+    "@astrojs/sitemap": "^3.7.6",
+    "astro": "^7.4.13"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
     "@astrojs/compiler": "^4.0.0",
-    "@types/node": "^26.6.6",
+    "@types/node": "^26.6.10",
     "axe-core": "^4.14.1",
     "jsdom": "^31.0.1",
     "smol-toml": "^1.9.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.2"
   }
 }
